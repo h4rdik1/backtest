@@ -41,7 +41,7 @@ warnings.filterwarnings("ignore")
 # ─────────────────────────────────────────────
 # CONFIG (easy-to-tweak strategy parameters)
 # ─────────────────────────────────────────────
-SYMBOL: str = "XRP/USDT"
+SYMBOL: str = "BTC/USDT"
 RISK_REWARD: float = 3.0
 FIXED_SL_USDT: float = 25.0
 ACCOUNT_SIZE: float = 1000.0
@@ -79,40 +79,19 @@ PARAMS: Dict[str, Any] = {
 # BATCHED DATA FETCHING
 # ─────────────────────────────────────────────
 def fetch_ohlcv_full(symbol: str, timeframe: str, days: int) -> pd.DataFrame:
-    """Paginate Binance API to get full history for N days."""
-    exchange = ccxt.binance({"enableRateLimit": True})
-    since = int((datetime.now(timezone.utc) - timedelta(days=days)).timestamp() * 1000)
-    limit = 1000
-    all_data = []
-    requests = 0
-
-    while True:
-        try:
-            raw = exchange.fetch_ohlcv(symbol, timeframe, since=since, limit=limit)
-            requests += 1
-        except Exception as e:
-            print(f"   [WARN] Retry after error: {e}")
-            time.sleep(3)
-            continue
-
-        if not raw:
-            break
-
-        all_data.extend(raw)
-
-        if len(raw) < limit:
-            break
-
-        since = raw[-1][0] + 1
-        time.sleep(exchange.rateLimit / 1000)
-
-    print(f"   {timeframe}: {len(all_data):,} candles fetched ({requests} requests)")
-
-    df = pd.DataFrame(all_data, columns=["timestamp","open","high","low","close","volume"])
-    df.drop_duplicates("timestamp", inplace=True)
-    df["timestamp"] = pd.to_datetime(df["timestamp"], unit="ms", utc=True)
+    """Load local CSV and handle index/type conversion instead of fetching from API."""
+    import os
+    safe_symbol = symbol.replace("/", "_")
+    filename = os.path.join("prev_candles", safe_symbol, f"{timeframe}.csv")
+    
+    if not os.path.exists(filename):
+        raise FileNotFoundError(f"Missing {filename}. Run fetch_candles.py first!")
+    
+    df = pd.read_csv(filename)
+    df["timestamp"] = pd.to_datetime(df["timestamp"], utc=True)
     df.set_index("timestamp", inplace=True)
     df.sort_index(inplace=True)
+    print(f"   {timeframe}: {len(df):,} candles loaded from {filename}")
     return df
 
 

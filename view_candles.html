@@ -2,106 +2,354 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Candle Data Viewer</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SMC Vision - Interactive Explorer</title>
+    <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
     <style>
-        table { border-collapse: collapse; width: 100%; }
-        th, td { border: 1px solid #ccc; padding: 4px; text-align: right; }
-        th { background: #eee; }
+        :root {
+            --bg-color: #0b0b0e;
+            --sidebar-bg: #131317;
+            --accent-color: #3b82f6;
+            --text-primary: #f8fafc;
+            --text-secondary: #94a3b8;
+            --border-color: #1e293b;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: var(--bg-color);
+            color: var(--text-primary);
+            font-family: 'Inter', sans-serif;
+            display: flex;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        /* Sidebar Styling */
+        aside {
+            width: 260px;
+            background: var(--sidebar-bg);
+            border-right: 1px solid var(--border-color);
+            display: flex;
+            flex-direction: column;
+            flex-shrink: 0;
+        }
+
+        .brand {
+            padding: 24px;
+            font-weight: 600;
+            font-size: 1.1rem;
+            color: var(--accent-color);
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .sidebar-content {
+            flex: 1;
+            overflow-y: auto;
+            padding: 16px;
+        }
+
+        .section-label {
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--text-secondary);
+            margin-bottom: 12px;
+            margin-top: 20px;
+        }
+
+        .symbol-list {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .symbol-item {
+            padding: 10px 14px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            transition: all 0.2s;
+            border: 1px solid transparent;
+        }
+
+        .symbol-item:hover {
+            background: #1e293b;
+            color: white;
+        }
+
+        .symbol-item.active {
+            background: rgba(59, 130, 246, 0.1);
+            border-color: var(--accent-color);
+            color: var(--accent-color);
+        }
+
+        .tf-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 8px;
+            margin-top: 12px;
+        }
+
+        .tf-btn {
+            background: #1e293b;
+            border: 1px solid var(--border-color);
+            color: var(--text-secondary);
+            padding: 6px 4px;
+            border-radius: 6px;
+            font-size: 0.75rem;
+            cursor: pointer;
+            text-align: center;
+            transition: all 0.2s;
+        }
+
+        .tf-btn:hover { background: #334155; color: white; }
+        .tf-btn.active {
+            background: var(--accent-color);
+            color: white;
+            border-color: var(--accent-color);
+        }
+
+        /* Main Area Styling */
+        main {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background: var(--bg-color);
+        }
+
+        #chart-wrapper {
+            flex: 1;
+            position: relative;
+            background: var(--bg-color);
+        }
+
+        #chart-container {
+            width: 100%;
+            height: 100%;
+        }
+
+        /* Status Overlay */
+        .overlay {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            z-index: 50;
+        }
+
+        .loading-text {
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+            margin-top: 10px;
+        }
+
+        .spinner {
+            width: 30px; height: 30px;
+            border: 3px solid rgba(255,255,255,0.05);
+            border-top-color: var(--accent-color);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            margin: 0 auto;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
     </style>
 </head>
 <body>
-    <h2>Candle Data Viewer</h2>
-    <input type="file" id="csvFile" accept=".csv">
-    <br><br>
-    <label for="timeframe">Timeframe:</label>
-    <select id="timeframe">
-        <option value="1d">1 Day</option>
-        <option value="1w">1 Week</option>
-        <option value="1m">1 Month</option>
-    </select>
-    <br><br>
-    <div id="tableContainer"></div>
+
+    <aside>
+        <div class="brand">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>
+            SMC VISION
+        </div>
+        <div class="sidebar-content">
+            <div class="section-label">Downloaded Symbols</div>
+            <div id="symbol-list" class="symbol-list">
+                <!-- Symbols will be injected here -->
+            </div>
+            
+            <div id="tf-section" style="display: none;">
+                <div class="section-label">Select Timeframe</div>
+                <div id="tf-grid" class="tf-grid">
+                    <!-- TFs will be injected here -->
+                </div>
+            </div>
+        </div>
+    </aside>
+
+    <main>
+        <div id="chart-wrapper">
+            <div id="chart-container"></div>
+            <div id="overlay" class="overlay" style="display: none;">
+                <div class="spinner"></div>
+                <div class="loading-text" id="status-msg">Loading candles...</div>
+            </div>
+            <div id="welcome-msg" class="overlay">
+                <div style="font-size: 1.1rem; color: #475569; font-weight: 500;">Select a symbol to start</div>
+            </div>
+        </div>
+    </main>
+
     <script>
-    function parseCSV(text) {
-        const lines = text.trim().split('\n');
-        const headers = lines[0].split(',');
-        return lines.slice(1).map(line => {
-            const values = line.split(',');
-            const obj = {};
-            headers.forEach((h, i) => obj[h] = values[i]);
-            return obj;
-        });
-    }
+        let allData = {};
+        let activeSymbol = null;
+        let activeTf = null;
+        let chart = null;
+        let candleSeries = null;
+        let volumeSeries = null;
 
-    function groupByTimeframe(data, timeframe) {
-        if (timeframe === '1d') return data;
-        const grouped = [];
-        let group = null;
-        let lastPeriod = null;
-        data.forEach(row => {
-            const date = new Date(row['datetime']);
-            let period;
-            if (timeframe === '1w') {
-                // Week number of year
-                const firstDay = new Date(date.getFullYear(),0,1);
-                const days = Math.floor((date - firstDay) / 86400000);
-                period = date.getFullYear() + '-W' + Math.ceil((days + firstDay.getDay() + 1) / 7);
-            } else if (timeframe === '1m') {
-                period = date.getFullYear() + '-' + (date.getMonth()+1);
+        // Init Chart
+        function initChart() {
+            const container = document.getElementById('chart-container');
+            chart = LightweightCharts.createChart(container, {
+                layout: { background: { color: '#0b0b0e' }, textColor: '#94a3b8' },
+                grid: { vertLines: { color: '#1e293b' }, horzLines: { color: '#1e293b' } },
+                crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
+                timeScale: { borderColor: '#1e293b', timeVisible: true }
+            });
+
+            candleSeries = chart.addCandlestickSeries({
+                upColor: '#22c55e', downColor: '#ef4444', 
+                borderUpColor: '#22c55e', borderDownColor: '#ef4444',
+                wickUpColor: '#22c55e', wickDownColor: '#ef4444',
+            });
+
+            volumeSeries = chart.addHistogramSeries({
+                color: '#26a69a',
+                priceFormat: { type: 'volume' },
+                priceScaleId: '', 
+            });
+
+            volumeSeries.priceScale().applyOptions({
+                scaleMargins: { top: 0.8, bottom: 0 },
+            });
+
+            window.addEventListener('resize', () => {
+                chart.resize(container.clientWidth, container.clientHeight);
+            });
+            
+            // Adjust to container size immediately
+            chart.resize(container.clientWidth, container.clientHeight);
+        }
+
+        async function fetchDirectory() {
+            try {
+                const response = await fetch('/api/list_data');
+                allData = await response.json();
+                renderSymbols();
+            } catch (err) {
+                console.error("Failed to fetch symol list:", err);
+                document.getElementById('welcome-msg').innerText = "Run 'python view_candles.py' first!";
             }
-            if (period !== lastPeriod) {
-                if (group) grouped.push(group);
-                group = { ...row };
-                group.open = row.open;
-                group.high = row.high;
-                group.low = row.low;
-                group.close = row.close;
-                group.volume = parseFloat(row.volume);
-                group.period = period;
-            } else {
-                group.high = Math.max(group.high, row.high);
-                group.low = Math.min(group.low, row.low);
-                group.close = row.close;
-                group.volume += parseFloat(row.volume);
+        }
+
+        function renderSymbols() {
+            const list = document.getElementById('symbol-list');
+            list.innerHTML = '';
+            Object.keys(allData).forEach(symbol => {
+                const div = document.createElement('div');
+                div.className = 'symbol-item';
+                div.innerText = symbol.replace('_', '/');
+                div.onclick = () => selectSymbol(symbol, div);
+                list.appendChild(div);
+            });
+        }
+
+        function selectSymbol(symbol, el) {
+            document.querySelectorAll('.symbol-item').forEach(i => i.classList.remove('active'));
+            el.classList.add('active');
+            activeSymbol = symbol;
+            
+            document.getElementById('welcome-msg').style.display = 'none';
+            document.getElementById('tf-section').style.display = 'block';
+            
+            const grid = document.getElementById('tf-grid');
+            grid.innerHTML = '';
+            allData[symbol].forEach(tf => {
+                const btn = document.createElement('button');
+                btn.className = 'tf-btn';
+                btn.innerText = tf.toUpperCase();
+                btn.onclick = () => selectTf(tf, btn);
+                grid.appendChild(btn);
+            });
+            
+            // Auto-select first TF if available
+            if (allData[symbol].length > 0) {
+                grid.children[0].click();
             }
-            lastPeriod = period;
-        });
-        if (group) grouped.push(group);
-        return grouped;
-    }
+        }
 
-    function renderTable(data) {
-        if (!data.length) return '<p>No data</p>';
-        let html = '<table><tr>';
-        Object.keys(data[0]).forEach(k => html += `<th>${k}</th>`);
-        html += '</tr>';
-        data.forEach(row => {
-            html += '<tr>';
-            Object.values(row).forEach(v => html += `<td>${v}</td>`);
-            html += '</tr>';
-        });
-        html += '</table>';
-        return html;
-    }
+        async function selectTf(tf, btn) {
+            document.querySelectorAll('.tf-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            activeTf = tf;
+            
+            loadCandles(activeSymbol, tf);
+        }
 
-    let candleData = [];
-    document.getElementById('csvFile').addEventListener('change', function(e) {
-        const file = e.target.files[0];
-        if (!file) return;
-        const reader = new FileReader();
-        reader.onload = function(evt) {
-            candleData = parseCSV(evt.target.result);
-            updateTable();
-        };
-        reader.readAsText(file);
-    });
-    document.getElementById('timeframe').addEventListener('change', updateTable);
-    function updateTable() {
-        if (!candleData.length) return;
-        const tf = document.getElementById('timeframe').value;
-        const grouped = groupByTimeframe(candleData, tf);
-        document.getElementById('tableContainer').innerHTML = renderTable(grouped);
-    }
+        async function loadCandles(symbol, tf) {
+            document.getElementById('overlay').style.display = 'block';
+            document.getElementById('status-msg').innerText = `Loading ${symbol} ${tf}...`;
+
+            const url = `/prev_candles/${symbol}/${tf}.csv`;
+            try {
+                const response = await fetch(url);
+                const text = await response.text();
+                processData(text);
+            } catch (err) {
+                alert(`Error loading ${url}: ${err.message}`);
+                document.getElementById('overlay').style.display = 'none';
+            }
+        }
+
+        function processData(csvText) {
+            const lines = csvText.trim().split('\n');
+            const headers = lines[0].split(',').map(h => h.trim());
+            
+            const candles = [];
+            const volumes = [];
+            
+            for (let i = 1; i < lines.length; i++) {
+                const cols = lines[i].split(',');
+                if (cols.length < 5) continue;
+                
+                const row = {};
+                headers.forEach((h, idx) => row[h] = cols[idx]);
+                
+                const time = new Date(row.timestamp).getTime() / 1000;
+                if (isNaN(time)) continue;
+                
+                const o = parseFloat(row.open);
+                const h = parseFloat(row.high);
+                const l = parseFloat(row.low);
+                const c = parseFloat(row.close);
+                const v = parseFloat(row.volume || 0);
+
+                candles.push({ time, open: o, high: h, low: l, close: c });
+                volumes.push({ 
+                    time, 
+                    value: v, 
+                    color: c >= o ? 'rgba(34, 197, 94, 0.4)' : 'rgba(239, 68, 68, 0.4)'
+                });
+            }
+
+            candleSeries.setData(candles);
+            volumeSeries.setData(volumes);
+            chart.timeScale().fitContent();
+            document.getElementById('overlay').style.display = 'none';
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            initChart();
+            fetchDirectory();
+        });
     </script>
 </body>
 </html>

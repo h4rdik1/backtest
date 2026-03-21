@@ -1,18 +1,15 @@
 import ccxt
 import pandas as pd
 import time
+import os
 from datetime import datetime, timedelta, timezone
 
 # ─────────────────────────────────────────────
 # CONFIGURATION
 # ─────────────────────────────────────────────
-SYMBOL = 'XRP/USDT'
+SYMBOL = 'BTC/USDT'
 EXCHANGE_ID = 'binance'
-TIMEFRAMES = {
-    "4h": "XRP_USDT_4h.csv",
-    "1h": "XRP_USDT_1h.csv",
-    "5m": "XRP_USDT_5m.csv"
-}
+TIMEFRAMES = ["1d", "1h", "5m"]
 LOOKBACK_DAYS = 365
 
 def fetch_history(symbol, timeframe, days):
@@ -46,11 +43,16 @@ def fetch_history(symbol, timeframe, days):
 def run_fetcher():
     print("=" * 62)
     print(f"  SMC DATA FETCHER - {SYMBOL}")
-    print(f"  Fetching {LOOKBACK_DAYS} days for: {list(TIMEFRAMES.keys())}")
+    print(f"  Fetching {LOOKBACK_DAYS} days for: {TIMEFRAMES}")
     print("=" * 62)
     
-    for tf, filename in TIMEFRAMES.items():
+    safe_symbol = SYMBOL.replace("/", "_")
+    output_dir = os.path.join("prev_candles", safe_symbol)
+    os.makedirs(output_dir, exist_ok=True)
+    
+    for tf in TIMEFRAMES:
         df = fetch_history(SYMBOL, tf, LOOKBACK_DAYS)
+        filename = os.path.join(output_dir, f"{tf}.csv")
         df.to_csv(filename, index=False)
         print(f"   SUCCESS: Saved {len(df):,} candles to {filename}")
         
