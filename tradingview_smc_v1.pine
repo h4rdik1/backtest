@@ -1,0 +1,84 @@
+//@version=5
+strategy("SMC OB/MSB/FVG (1D-1H-5m)", overlay=true, initial_capital=1000, pyramiding=0)
+
+// CHANGELOG:
+// - Updated rules to strictly require a close above the most recent daily lower high for MSB.
+// - Added 50% OB mean invalidation constraint to the HTF Daily OB (closes below mean invalidate).
+// - Documented TV limitations regarding multi-TF sequential states.
+
+// LIMITATIONS & ALERTS PATTERN:
+// Pine Script's request.security pulls the *final* historical state of a HTF candle, meaning 
+// we cannot easily see in historical backtesting if price perfectly did:
+// 1D OB formed -> Price went down -> 1D Touch -> 1D MSB -> 1H OB formed -> 5m Entry.
+// To perfectly replicate the Python sequential state logic live:
+// Use 3 separate TV alerts chained via a 3rd party tool (like Alertatron/3Commas):
+// Alert 1 (1D Chart): "Daily OB touched. Wait for MSB."
+// Alert 2 (1D Chart): "Daily MSB confirmed. Look for 1H OB."
+// Alert 3 (5m Chart): "1H OB zone touched + 5m entry trigger. EXECUTE TRADE."
+
+rr = input.float(3.0, "Risk Reward", step=0.1)
+sl_buffer = input.float(0.999, "Stop Buffer", step=0.0001)
+swingLen = input.int(3, "Swing Lookback", minval=2)
+useFvgEntry = input.bool(true, "Enable FVG Entry Trigger")
+
+// HTF/LTF series
+[dOpen, dHigh, dLow, dClose] = request.security(syminfo.tickerid, "1D", [open, high, low, close], barmerge.gaps_off, barmerge.lookahead_off)
+[hOpen, hHigh, hLow, hClose] = request.security(syminfo.tickerid, "60", [open, high, low, close], barmerge.gaps_off, barmerge.lookahead_off)
+
+// Daily swing low and simple bullish OB approximation
+dSwingLow = ta.pivotlow(dLow, swingLen, swingLen)
+dBear = dClose[1] < dOpen[1]
+dImpulse = dClose > dHigh[1]
+dObHigh = dHigh[1]
+dObLow = dLow[1]
+dObBodyHi = math.max(dOpen[1], dClose[1])
+dObBodyLow = math.min(dOpen[1], dClose[1])
+dObMean = dObBodyLow + (dObBodyHi - dObBodyLow) / 2
+dObValid = dBear and dImpulse and not na(dSwingLow)
+
+// Daily touch + MSB approximation with invalidation
+// Invalidation: Price closes below the 50% OB mean threshold.
+dInvalid = dClose < dObMean
+dTouch = dObValid and dLow <= dObHigh and dClose >= dObLow and not dInvalid
+
+// Strict MSB: Crossover of most recent swing high (lower high approximation via highest past swings)
+dSwingHighs = ta.highest(dHigh, swingLen * 2)
+// Since identifying the *exact* lower high without arrays in simple TV is messy, 
+// we use the highest high over the swing wait period as a strong proxy for the lower high.
+dMsb = ta.crossover(dClose, dSwingHighs)
+
+// 1H bullish OB approximation after daily context
+hBear = hClose[1] < hOpen[1]
+hImpulse = hClose > hHigh[1]
+hObHigh = hHigh[1]
+hObLow = hLow[1]
+hObBodyHi = math.max(hOpen[1], hClose[1])
+hObBodyLo = math.min(hOpen[1], hClose[1])
+hBullOb = hBear and hImpulse and hObLow >= dObLow
+
+// 5m triggers
+in1hObZone = low <= hObBodyHi and high >= hObBodyLo
+obTrigger = close > open and close > high[1]
+
+// Simple bullish FVG + reclaim
+fvgBull = low > high[2]
+fvgTop = low
+fvgBottom = high[2]
+fvgReclaim = useFvgEntry and (low <= fvgTop and high >= fvgBottom) and close > fvgTop and close > high[1]
+
+longSignal = dTouch and dMsb and hBullOb and in1hObZone and (obTrigger or fvgReclaim)
+
+// Sizing logic context: $25 risk formula (for external execution, position= $25/risk)
+stopPrice = dObBodyLow * sl_buffer
+risk = close - stopPrice
+target = close + rr * risk
+
+if longSignal and risk > 0
+    strategy.entry("Long", strategy.long)
+    strategy.exit("TP/SL", "Long", stop=stopPrice, limit=target)
+    label.new(bar_index, low, "Long\nOB/FVG", style=label.style_label_up, textcolor=color.white, color=color.new(color.green, 0))
+
+plot(stopPrice, "Stop", color=color.new(color.red, 0), linewidth=1, style=plot.style_linebr)
+plot(target, "Target", color=color.new(color.green, 0), linewidth=1, style=plot.style_linebr)
+
+alertcondition(longSignal, "SMC Long Signal", "SMC long signal: OB/MSB/FVG conditions met")

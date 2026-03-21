@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Candle Data Viewer</title>
+    <style>
+        table { border-collapse: collapse; width: 100%; }
+        th, td { border: 1px solid #ccc; padding: 4px; text-align: right; }
+        th { background: #eee; }
+    </style>
+</head>
+<body>
+    <h2>Candle Data Viewer</h2>
+    <input type="file" id="csvFile" accept=".csv">
+    <br><br>
+    <label for="timeframe">Timeframe:</label>
+    <select id="timeframe">
+        <option value="1d">1 Day</option>
+        <option value="1w">1 Week</option>
+        <option value="1m">1 Month</option>
+    </select>
+    <br><br>
+    <div id="tableContainer"></div>
+    <script>
+    function parseCSV(text) {
+        const lines = text.trim().split('\n');
+        const headers = lines[0].split(',');
+        return lines.slice(1).map(line => {
+            const values = line.split(',');
+            const obj = {};
+            headers.forEach((h, i) => obj[h] = values[i]);
+            return obj;
+        });
+    }
+
+    function groupByTimeframe(data, timeframe) {
+        if (timeframe === '1d') return data;
+        const grouped = [];
+        let group = null;
+        let lastPeriod = null;
+        data.forEach(row => {
+            const date = new Date(row['datetime']);
+            let period;
+            if (timeframe === '1w') {
+                // Week number of year
+                const firstDay = new Date(date.getFullYear(),0,1);
+                const days = Math.floor((date - firstDay) / 86400000);
+                period = date.getFullYear() + '-W' + Math.ceil((days + firstDay.getDay() + 1) / 7);
+            } else if (timeframe === '1m') {
+                period = date.getFullYear() + '-' + (date.getMonth()+1);
+            }
+            if (period !== lastPeriod) {
+                if (group) grouped.push(group);
+                group = { ...row };
+                group.open = row.open;
+                group.high = row.high;
+                group.low = row.low;
+                group.close = row.close;
+                group.volume = parseFloat(row.volume);
+                group.period = period;
+            } else {
+                group.high = Math.max(group.high, row.high);
+                group.low = Math.min(group.low, row.low);
+                group.close = row.close;
+                group.volume += parseFloat(row.volume);
+            }
+            lastPeriod = period;
+        });
+        if (group) grouped.push(group);
+        return grouped;
+    }
+
+    function renderTable(data) {
+        if (!data.length) return '<p>No data</p>';
+        let html = '<table><tr>';
+        Object.keys(data[0]).forEach(k => html += `<th>${k}</th>`);
+        html += '</tr>';
+        data.forEach(row => {
+            html += '<tr>';
+            Object.values(row).forEach(v => html += `<td>${v}</td>`);
+            html += '</tr>';
+        });
+        html += '</table>';
+        return html;
+    }
+
+    let candleData = [];
+    document.getElementById('csvFile').addEventListener('change', function(e) {
+        const file = e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = function(evt) {
+            candleData = parseCSV(evt.target.result);
+            updateTable();
+        };
+        reader.readAsText(file);
+    });
+    document.getElementById('timeframe').addEventListener('change', updateTable);
+    function updateTable() {
+        if (!candleData.length) return;
+        const tf = document.getElementById('timeframe').value;
+        const grouped = groupByTimeframe(candleData, tf);
+        document.getElementById('tableContainer').innerHTML = renderTable(grouped);
+    }
+    </script>
+</body>
+</html>
