@@ -7,9 +7,9 @@ from datetime import datetime, timedelta, timezone
 # ─────────────────────────────────────────────
 # CONFIGURATION
 # ─────────────────────────────────────────────
-SYMBOL = 'BTC/USDT'
+SYMBOL = 'SOL/USDT'
 EXCHANGE_ID = 'binance'
-TIMEFRAMES = ["1d", "1h", "5m"]
+TIMEFRAMES = ["1d", "1h", "15m", "5m"]
 LOOKBACK_DAYS = 365
 
 def fetch_history(symbol, timeframe, days):

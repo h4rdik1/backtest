@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SMC Vision - Interactive Explorer</title>
+    <title>SMC Vision - Backtest Dashboard</title>
     <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
     <style>
@@ -14,6 +14,8 @@
             --text-primary: #f8fafc;
             --text-secondary: #94a3b8;
             --border-color: #1e293b;
+            --win-color: #22c55e;
+            --loss-color: #ef4444;
         }
 
         body {
@@ -29,7 +31,7 @@
 
         /* Sidebar Styling */
         aside {
-            width: 260px;
+            width: 320px;
             background: var(--sidebar-bg);
             border-right: 1px solid var(--border-color);
             display: flex;
@@ -38,7 +40,7 @@
         }
 
         .brand {
-            padding: 24px;
+            padding: 20px;
             font-weight: 600;
             font-size: 1.1rem;
             color: var(--accent-color);
@@ -46,6 +48,28 @@
             display: flex;
             align-items: center;
             gap: 10px;
+        }
+
+        .sidebar-tabs {
+            display: flex;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .tab-btn {
+            flex: 1;
+            padding: 12px;
+            background: none;
+            border: none;
+            color: var(--text-secondary);
+            font-size: 0.85rem;
+            cursor: pointer;
+            border-bottom: 2px solid transparent;
+        }
+
+        .tab-btn.active {
+            color: var(--accent-color);
+            border-bottom-color: var(--accent-color);
+            background: rgba(59,130,246,0.05);
         }
 
         .sidebar-content {
@@ -60,59 +84,49 @@
             letter-spacing: 0.05em;
             color: var(--text-secondary);
             margin-bottom: 12px;
-            margin-top: 20px;
+            margin-top: 10px;
         }
 
-        .symbol-list {
-            display: flex;
-            flex-direction: column;
-            gap: 4px;
-        }
-
+        /* Symbol List */
         .symbol-item {
             padding: 10px 14px;
             border-radius: 8px;
             cursor: pointer;
             font-size: 0.9rem;
+            margin-bottom: 4px;
             transition: all 0.2s;
-            border: 1px solid transparent;
         }
+        .symbol-item:hover { background: #1e293b; }
+        .symbol-item.active { background: rgba(59,130,246,0.1); color: var(--accent-color); }
 
-        .symbol-item:hover {
-            background: #1e293b;
-            color: white;
-        }
-
-        .symbol-item.active {
-            background: rgba(59, 130, 246, 0.1);
-            border-color: var(--accent-color);
-            color: var(--accent-color);
-        }
-
-        .tf-grid {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 8px;
-            margin-top: 12px;
-        }
-
-        .tf-btn {
-            background: #1e293b;
+        /* Trade List */
+        .trade-item {
+            padding: 12px;
+            background: #1a1a20;
             border: 1px solid var(--border-color);
-            color: var(--text-secondary);
-            padding: 6px 4px;
-            border-radius: 6px;
-            font-size: 0.75rem;
+            border-radius: 8px;
+            margin-bottom: 8px;
             cursor: pointer;
-            text-align: center;
-            transition: all 0.2s;
+            font-size: 0.85rem;
+            transition: transform 0.1s;
         }
+        .trade-item:hover { transform: translateX(4px); border-color: #334155; }
+        .trade-item.WIN { border-left: 4px solid var(--win-color); }
+        .trade-item.LOSS { border-left: 4px solid var(--loss-color); }
 
-        .tf-btn:hover { background: #334155; color: white; }
-        .tf-btn.active {
-            background: var(--accent-color);
-            color: white;
-            border-color: var(--accent-color);
+        .trade-header { display: flex; justify-content: space-between; margin-bottom: 4px; }
+        .trade-time { color: var(--text-secondary); font-size: 0.75rem; }
+        .trade-result { font-weight: 600; }
+        .trade-result.WIN { color: var(--win-color); }
+        .trade-result.LOSS { color: var(--loss-color); }
+
+        /* Equity Wrapper */
+        #equity-chart {
+            height: 100px;
+            margin-bottom: 20px;
+            border-radius: 6px;
+            overflow: hidden;
+            border: 1px solid var(--border-color);
         }
 
         /* Main Area Styling */
@@ -126,28 +140,16 @@
         #chart-wrapper {
             flex: 1;
             position: relative;
-            background: var(--bg-color);
         }
 
-        #chart-container {
-            width: 100%;
-            height: 100%;
-        }
+        #chart-container { width: 100%; height: 100%; }
 
-        /* Status Overlay */
         .overlay {
             position: absolute;
-            top: 50%;
-            left: 50%;
+            top: 50%; left: 50%;
             transform: translate(-50%, -50%);
             text-align: center;
             z-index: 50;
-        }
-
-        .loading-text {
-            color: var(--text-secondary);
-            font-size: 0.9rem;
-            margin-top: 10px;
         }
 
         .spinner {
@@ -156,7 +158,7 @@
             border-top-color: var(--accent-color);
             border-radius: 50%;
             animation: spin 0.8s linear infinite;
-            margin: 0 auto;
+            margin: 0 auto 10px;
         }
         @keyframes spin { to { transform: rotate(360deg); } }
 
@@ -167,20 +169,25 @@
     <aside>
         <div class="brand">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>
-            SMC VISION
+            SMC DASHBOARD
         </div>
-        <div class="sidebar-content">
-            <div class="section-label">Downloaded Symbols</div>
-            <div id="symbol-list" class="symbol-list">
-                <!-- Symbols will be injected here -->
-            </div>
+
+        <div class="sidebar-tabs">
+            <button class="tab-btn active" onclick="switchTab('explorer')">Explorer</button>
+            <button class="tab-btn" onclick="switchTab('trades')">Trade Log</button>
+        </div>
+
+        <div id="explorer-content" class="sidebar-content">
+            <div class="section-label">Inventory</div>
+            <div id="symbol-list"></div>
+        </div>
+
+        <div id="trades-content" class="sidebar-content" style="display: none;">
+            <div class="section-label">Equity Curve</div>
+            <div id="equity-chart"></div>
             
-            <div id="tf-section" style="display: none;">
-                <div class="section-label">Select Timeframe</div>
-                <div id="tf-grid" class="tf-grid">
-                    <!-- TFs will be injected here -->
-                </div>
-            </div>
+            <div class="section-label">History</div>
+            <div id="trade-list"></div>
         </div>
     </aside>
 
@@ -189,30 +196,32 @@
             <div id="chart-container"></div>
             <div id="overlay" class="overlay" style="display: none;">
                 <div class="spinner"></div>
-                <div class="loading-text" id="status-msg">Loading candles...</div>
-            </div>
-            <div id="welcome-msg" class="overlay">
-                <div style="font-size: 1.1rem; color: #475569; font-weight: 500;">Select a symbol to start</div>
+                <div id="status-msg" style="font-size: 0.9rem; color: var(--text-secondary);">Loading...</div>
             </div>
         </div>
     </main>
 
     <script>
-        let allData = {};
+        let allSymbols = {};
+        let tradeLog = [];
         let activeSymbol = null;
         let activeTf = null;
         let chart = null;
         let candleSeries = null;
         let volumeSeries = null;
+        let priceLines = [];
 
-        // Init Chart
-        function initChart() {
+        let equityChart = null;
+        let equitySeries = null;
+
+        function initCharts() {
+            // Main Chart
             const container = document.getElementById('chart-container');
             chart = LightweightCharts.createChart(container, {
                 layout: { background: { color: '#0b0b0e' }, textColor: '#94a3b8' },
                 grid: { vertLines: { color: '#1e293b' }, horzLines: { color: '#1e293b' } },
-                crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
-                timeScale: { borderColor: '#1e293b', timeVisible: true }
+                timeScale: { borderColor: '#1e293b', timeVisible: true, secondsVisible: false },
+                rightPriceScale: { borderColor: '#1e293b' }
             });
 
             candleSeries = chart.addCandlestickSeries({
@@ -222,122 +231,123 @@
             });
 
             volumeSeries = chart.addHistogramSeries({
-                color: '#26a69a',
-                priceFormat: { type: 'volume' },
-                priceScaleId: '', 
+                color: '#26a69a', priceFormat: { type: 'volume' }, priceScaleId: '', 
             });
+            volumeSeries.priceScale().applyOptions({ scaleMargins: { top: 0.8, bottom: 0 } });
 
-            volumeSeries.priceScale().applyOptions({
-                scaleMargins: { top: 0.8, bottom: 0 },
+            // Equity Sparkline
+            const equityContainer = document.getElementById('equity-chart');
+            equityChart = LightweightCharts.createChart(equityContainer, {
+                layout: { background: { color: '#000' }, textColor: '#475569' },
+                grid: { vertLines: { visible: false }, horzLines: { visible: false } },
+                timeScale: { visible: false },
+                rightPriceScale: { visible: false },
+                handleScroll: false, handleScale: false
             });
+            equitySeries = equityChart.addLineSeries({ color: '#22c55e', lineWidth: 2 });
 
             window.addEventListener('resize', () => {
                 chart.resize(container.clientWidth, container.clientHeight);
+                equityChart.resize(equityContainer.clientWidth, equityContainer.clientHeight);
             });
-            
-            // Adjust to container size immediately
             chart.resize(container.clientWidth, container.clientHeight);
+            equityChart.resize(equityContainer.clientWidth, equityContainer.clientHeight);
         }
 
-        async function fetchDirectory() {
+        async function loadCoreData() {
             try {
-                const response = await fetch('/api/list_data');
-                allData = await response.json();
+                // Fetch symbols
+                const sResp = await fetch('/api/list_data');
+                allSymbols = await sResp.json();
                 renderSymbols();
+
+                // Fetch trades
+                const tResp = await fetch('/api/list_trades');
+                tradeLog = await tResp.json();
+                renderTrades();
+                updateEquityCurve();
             } catch (err) {
-                console.error("Failed to fetch symol list:", err);
-                document.getElementById('welcome-msg').innerText = "Run 'python view_candles.py' first!";
+                console.error("Data load failed:", err);
             }
+        }
+
+        function switchTab(tab) {
+            document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.innerText.toLowerCase().includes(tab)));
+            document.getElementById('explorer-content').style.display = tab === 'explorer' ? 'block' : 'none';
+            document.getElementById('trades-content').style.display = tab === 'trades' ? 'block' : 'none';
         }
 
         function renderSymbols() {
             const list = document.getElementById('symbol-list');
             list.innerHTML = '';
-            Object.keys(allData).forEach(symbol => {
+            Object.keys(allSymbols).forEach(s => {
                 const div = document.createElement('div');
                 div.className = 'symbol-item';
-                div.innerText = symbol.replace('_', '/');
-                div.onclick = () => selectSymbol(symbol, div);
+                div.innerText = s.replace('_', '/');
+                div.onclick = () => {
+                    activeSymbol = s;
+                    document.querySelectorAll('.symbol-item').forEach(i => i.classList.remove('active'));
+                    div.classList.add('active');
+                    loadCandles(s, '1h');
+                };
                 list.appendChild(div);
             });
         }
 
-        function selectSymbol(symbol, el) {
-            document.querySelectorAll('.symbol-item').forEach(i => i.classList.remove('active'));
-            el.classList.add('active');
-            activeSymbol = symbol;
-            
-            document.getElementById('welcome-msg').style.display = 'none';
-            document.getElementById('tf-section').style.display = 'block';
-            
-            const grid = document.getElementById('tf-grid');
-            grid.innerHTML = '';
-            allData[symbol].forEach(tf => {
-                const btn = document.createElement('button');
-                btn.className = 'tf-btn';
-                btn.innerText = tf.toUpperCase();
-                btn.onclick = () => selectTf(tf, btn);
-                grid.appendChild(btn);
+        function renderTrades() {
+            const list = document.getElementById('trade-list');
+            list.innerHTML = '';
+            tradeLog.forEach((t, idx) => {
+                const div = document.createElement('div');
+                div.className = `trade-item ${t.Result}`;
+                div.innerHTML = `
+                    <div class="trade-header">
+                        <span class="trade-result ${t.Result}">${t.Result} (${t.PnL > 0 ? '+' : ''}${t.PnL}$)</span>
+                        <span class="trade-time">${t['Entry Time'].split(' ')[0]}</span>
+                    </div>
+                    <div style="font-size: 0.75rem; color: #94a3b8">${t['Symbol']} | ${t['Entry Type']} Entry</div>
+                `;
+                div.onclick = () => jumpToTrade(t);
+                list.appendChild(div);
             });
-            
-            // Auto-select first TF if available
-            if (allData[symbol].length > 0) {
-                grid.children[0].click();
-            }
         }
 
-        async function selectTf(tf, btn) {
-            document.querySelectorAll('.tf-btn').forEach(b => b.classList.remove('active'));
-            btn.classList.add('active');
-            activeTf = tf;
-            
-            loadCandles(activeSymbol, tf);
+        function updateEquityCurve() {
+            if (tradeLog.length === 0) return;
+            const data = [{ time: 0, value: 1000 }]; // Assuming 1000 start
+            let current = 1000;
+            tradeLog.forEach((t, i) => {
+                current = parseFloat(t.Account);
+                data.push({ time: i + 1, value: current });
+            });
+            equitySeries.setData(data);
+            equityChart.timeScale().fitContent();
         }
 
         async function loadCandles(symbol, tf) {
             document.getElementById('overlay').style.display = 'block';
-            document.getElementById('status-msg').innerText = `Loading ${symbol} ${tf}...`;
-
-            const url = `/prev_candles/${symbol}/${tf}.csv`;
-            try {
-                const response = await fetch(url);
-                const text = await response.text();
-                processData(text);
-            } catch (err) {
-                alert(`Error loading ${url}: ${err.message}`);
-                document.getElementById('overlay').style.display = 'none';
-            }
-        }
-
-        function processData(csvText) {
-            const lines = csvText.trim().split('\n');
-            const headers = lines[0].split(',').map(h => h.trim());
+            activeSymbol = symbol;
+            activeTf = tf;
             
+            const url = `/prev_candles/${symbol}/${tf}.csv`;
+            const resp = await fetch(url);
+            const text = await resp.text();
+            
+            const lines = text.trim().split('\n');
+            const headers = lines[0].split(',').map(h => h.trim());
             const candles = [];
             const volumes = [];
             
             for (let i = 1; i < lines.length; i++) {
                 const cols = lines[i].split(',');
                 if (cols.length < 5) continue;
-                
-                const row = {};
-                headers.forEach((h, idx) => row[h] = cols[idx]);
-                
+                const row = {}; headers.forEach((h, idx) => row[h] = cols[idx]);
                 const time = new Date(row.timestamp).getTime() / 1000;
                 if (isNaN(time)) continue;
                 
-                const o = parseFloat(row.open);
-                const h = parseFloat(row.high);
-                const l = parseFloat(row.low);
-                const c = parseFloat(row.close);
-                const v = parseFloat(row.volume || 0);
-
+                const o = parseFloat(row.open), h = parseFloat(row.high), l = parseFloat(row.low), c = parseFloat(row.close), v = parseFloat(row.volume || 0);
                 candles.push({ time, open: o, high: h, low: l, close: c });
-                volumes.push({ 
-                    time, 
-                    value: v, 
-                    color: c >= o ? 'rgba(34, 197, 94, 0.4)' : 'rgba(239, 68, 68, 0.4)'
-                });
+                volumes.push({ time, value: v, color: c >= o ? 'rgba(34, 197, 94, 0.3)' : 'rgba(239, 68, 68, 0.3)' });
             }
 
             candleSeries.setData(candles);
@@ -346,9 +356,42 @@
             document.getElementById('overlay').style.display = 'none';
         }
 
+        async function jumpToTrade(trade) {
+            // First clear old lines
+            priceLines.forEach(l => candleSeries.removePriceLine(l));
+            priceLines = [];
+
+            // 1. Auto-switch symbol if different
+            const tradeSymbol = trade['Symbol'].replace('/', '_');
+            if (activeSymbol !== tradeSymbol) {
+                await loadCandles(tradeSymbol, '5m'); // Go to 5m for trade view
+            }
+            
+            const entryTime = new Date(trade['Entry Time']).getTime() / 1000;
+            
+            // Draw lines
+            const slLine = candleSeries.createPriceLine({
+                price: parseFloat(trade['Stop $']), color: '#ef4444', lineWidth: 2, lineStyle: LightweightCharts.LineStyle.Dashed, axisLabelVisible: true, title: 'SL'
+            });
+            const tpLine = candleSeries.createPriceLine({
+                price: parseFloat(trade['Target $']), color: '#22c55e', lineWidth: 2, lineStyle: LightweightCharts.LineStyle.Dashed, axisLabelVisible: true, title: 'TP'
+            });
+            const enLine = candleSeries.createPriceLine({
+                price: parseFloat(trade['Entry $']), color: '#3b82f6', lineWidth: 2, lineStyle: LightweightCharts.LineStyle.Solid, axisLabelVisible: true, title: 'ENTRY'
+            });
+            
+            priceLines.push(slLine, tpLine, enLine);
+
+            // Scroll to time
+            chart.timeScale().setVisibleRange({
+                from: entryTime - 3600 * 6, // 6h before
+                to: entryTime + 3600 * 12    // 12h after
+            });
+        }
+
         document.addEventListener('DOMContentLoaded', () => {
-            initChart();
-            fetchDirectory();
+            initCharts();
+            loadCoreData();
         });
     </script>
 </body>

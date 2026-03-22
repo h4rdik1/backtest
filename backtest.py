@@ -31,8 +31,11 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 from datetime import datetime, timedelta, timezone
+import os
 import time
 import warnings
+import argparse
+import copy
 from typing import List, Dict, Any, Optional, Tuple
 
 warnings.filterwarnings("ignore")
@@ -41,14 +44,14 @@ warnings.filterwarnings("ignore")
 # ─────────────────────────────────────────────
 # CONFIG (easy-to-tweak strategy parameters)
 # ─────────────────────────────────────────────
-SYMBOL: str = "BTC/USDT"
+SYMBOL: str = "SOL/USDT"
 RISK_REWARD: float = 3.0
 FIXED_SL_USDT: float = 25.0
 ACCOUNT_SIZE: float = 1000.0
 DAYS_BACK: int = 365
 SHOW_PLOTS: bool = False
 
-PARAMS: Dict[str, Any] = {
+BASE_PARAMS: Dict[str, Any] = {
     "debug_mode": True,  # Print specific reasons why setups invalidate
     "swing_lookback": 3,
     "max_candles_wait_4h": 60,
@@ -73,6 +76,72 @@ PARAMS: Dict[str, Any] = {
     "time_stop_bars": 288,
     "allow_msb_fallback_break": False, # Strict MSB: must break actual lower high
 }
+PARAMS: Dict[str, Any] = copy.deepcopy(BASE_PARAMS)
+
+PARAM_PRESETS: Dict[str, Dict[str, Any]] = {
+    "strict": {
+        "ob_impulse_mult_4h": 1.25,
+        "ob_impulse_mult_1h": 1.20,
+        "msb_break_mult": 0.10,
+        "use_ob_mean_invalidation": True,
+        "allow_msb_fallback_break": False,
+        "max_entry_search_bars": 480,
+    },
+    "balanced": {
+        "ob_impulse_mult_4h": 1.15,
+        "ob_impulse_mult_1h": 1.10,
+        "msb_break_mult": 0.05,
+        "use_ob_mean_invalidation": True,
+        "allow_msb_fallback_break": False,
+        "max_entry_search_bars": 720,
+    },
+    "relaxed": {
+        "ob_impulse_mult_4h": 1.05,
+        "ob_impulse_mult_1h": 1.00,
+        "msb_break_mult": 0.02,
+        "use_ob_mean_invalidation": True,
+        "allow_msb_fallback_break": True,
+        "max_entry_search_bars": 960,
+    },
+    "aggressive": {
+        "ob_impulse_mult_4h": 0.90,
+        "ob_impulse_mult_1h": 0.90,
+        "msb_break_mult": 0.00,
+        "use_ob_mean_invalidation": False,
+        "allow_msb_fallback_break": True,
+        "max_entry_search_bars": 1200,
+        "min_body_to_range": 0.25,
+    },
+}
+
+
+def _coerce_param_value(raw: str) -> Any:
+    """Parse CLI string values into bool/int/float/str."""
+    low = raw.lower()
+    if low in {"true", "false"}:
+        return low == "true"
+    try:
+        if "." in raw:
+            return float(raw)
+        return int(raw)
+    except ValueError:
+        return raw
+
+
+def build_params(profile: str, overrides: Optional[List[str]] = None) -> Dict[str, Any]:
+    """Build runtime params from base + preset + key=value overrides."""
+    p = copy.deepcopy(BASE_PARAMS)
+    preset = PARAM_PRESETS.get(profile, {})
+    p.update(preset)
+    for item in overrides or []:
+        if "=" not in item:
+            raise ValueError(f"Invalid --set '{item}'. Use key=value.")
+        key, val = item.split("=", 1)
+        key = key.strip()
+        if key not in p:
+            raise ValueError(f"Unknown param key '{key}'.")
+        p[key] = _coerce_param_value(val.strip())
+    return p
 
 
 # ─────────────────────────────────────────────
@@ -537,69 +606,96 @@ def compute_sharpe_like(pnl_series: pd.Series) -> float:
     return trade_returns.mean() / std * np.sqrt(len(trade_returns))
 
 
-def plot_example_trade(df_ltf: pd.DataFrame, trades: List[Dict[str, Any]], symbol: str, timeframe: str) -> None:
-    """Save a chart snapshot for the first completed trade."""
-    if not trades:
-        return
+def plot_trade(df_ltf: pd.DataFrame, trade: Dict[str, Any], symbol: str, timeframe: str, filename: str) -> None:
+    """Save a detailed chart for a specific trade with structural zones."""
+    import os
+    os.makedirs("trades", exist_ok=True)
+    
+    entry_time = pd.to_datetime(trade["Entry Time"], utc=True)
+    exit_ts = trade.get("exit_ts", entry_time + timedelta(hours=24))
+    
+    entry = trade["Entry $"]
+    stop = trade["Stop $"]
+    target = trade["Target $"]
+    result = trade["Result"]
 
-    t = trades[0]
-    entry_time = pd.to_datetime(t["Entry Time"], utc=True)
-    exit_time = pd.to_datetime(t["Exit Time"], utc=True)
-    entry = t["Entry $"]
-    stop = t["Stop $"]
-    target = t["Target $"]
-    result = t["Result"]
-
-    pre = entry_time - timedelta(hours=18)
-    post = exit_time + timedelta(hours=18)
+    # Window for visualization
+    pre = entry_time - timedelta(hours=48)
+    post = exit_ts + timedelta(hours=48)
     view = df_ltf[(df_ltf.index >= pre) & (df_ltf.index <= post)].copy()
     if view.empty:
         return
 
     x = np.arange(len(view))
-    fig, ax = plt.subplots(figsize=(14, 6))
-    fig.patch.set_facecolor("#0d0d0d")
-    ax.set_facecolor("#161616")
+    fig, ax = plt.subplots(figsize=(16, 8))
+    fig.patch.set_facecolor("#0b0b0e")
+    ax.set_facecolor("#111114")
 
-    ax.plot(x, view["close"].values, color="#4CA3FF", linewidth=1.6, label="Close")
-    ax.fill_between(x, stop, target, color="#2a2a2a", alpha=0.25, label="Risk/Reward Zone")
+    # Plot price
+    ax.plot(x, view["close"].values, color="#4CA3FF", linewidth=1.5, alpha=0.9, label="Price")
+    
+    # Highlight zones if available in trade dict
+    if "ob_4h" in trade:
+        ob = trade["ob_4h"]
+        ob_x_start = np.argmin(np.abs((view.index - ob["time"]).total_seconds()))
+        ax.add_patch(mpatches.Rectangle((ob_x_start, ob["ob_low"]), len(view)-ob_x_start, ob["ob_high"]-ob["ob_low"], 
+                                       color="#FFD166", alpha=0.1, label="HTF OB Zone"))
+        ax.axhline(ob["mean_thresh"], color="#FFD166", linestyle=":", alpha=0.3, label="OB 50% Mean")
 
+    if "ob_1h" in trade:
+        ob1 = trade["ob_1h"]
+        ob1_x_start = np.argmin(np.abs((view.index - ob1["time"]).total_seconds()))
+        ax.add_patch(mpatches.Rectangle((ob1_x_start, ob1["ob_low"]), len(view)-ob1_x_start, ob1["ob_high"]-ob1["ob_low"], 
+                                       color="#4CA3FF", alpha=0.15, label="1H Setup Zone"))
+
+    # Entry/Exit markers
     entry_idx = np.argmin(np.abs((view.index - entry_time).total_seconds()))
-    exit_idx = np.argmin(np.abs((view.index - exit_time).total_seconds()))
-    ax.scatter(entry_idx, entry, color="#00C896", s=80, marker="^", label="Entry")
-    ax.scatter(exit_idx, view["close"].iloc[exit_idx], color="#FFD166", s=80, marker="o", label="Exit")
+    exit_idx = np.argmin(np.abs((view.index - exit_ts).total_seconds()))
+    
+    # Shade RR Zone
+    ax.fill_between(x[entry_idx:exit_idx+1], stop, target, color="#22c55e" if result=="WIN" else "#ef4444", alpha=0.08)
 
-    ax.axhline(stop, color="#FF4C4C", linestyle="--", linewidth=1.2, label=f"Stop {stop:.4f}")
-    ax.axhline(target, color="#00C896", linestyle="--", linewidth=1.2, label=f"Target {target:.4f}")
-    ax.axhline(entry, color="#4CA3FF", linestyle=":", linewidth=1.0, label=f"Entry {entry:.4f}")
+    ax.scatter(entry_idx, entry, color="#00C896", s=120, marker="^", zorder=5, label=f"Entry: {entry:.2f}")
+    ax.scatter(exit_idx, view["close"].iloc[exit_idx], color="#FFD166", s=120, marker="o", zorder=5, label=f"Exit: {view['close'].iloc[exit_idx]:.2f}")
 
-    title = f"{symbol} {timeframe} Example Trade ({result})"
-    ax.set_title(title, color="white", fontsize=12, fontweight="bold")
-    ax.set_ylabel("Price", color="#ccc")
-    ax.grid(alpha=0.08, color="white")
-    ax.tick_params(colors="#aaa")
+    # Lines
+    ax.axhline(stop, color="#FF4C4C", linestyle="--", linewidth=1.5, alpha=0.8, label=f"SL: {stop:.2f}")
+    ax.axhline(target, color="#00C896", linestyle="--", linewidth=1.5, alpha=0.8, label=f"TP: {target:.2f}")
 
-    xticks = np.linspace(0, len(view) - 1, 8).astype(int)
+    # Markers for MSB
+    if "msb" in trade:
+        msb_time = trade["msb"]["time"]
+        msb_idx = np.argmin(np.abs((view.index - msb_time).total_seconds()))
+        ax.annotate("MSB", xy=(msb_idx, trade["msb"]["broken_level"]), xytext=(0, 20), textcoords='offset points',
+                    arrowprops=dict(arrowstyle="->", color="white"), color="white", fontsize=9, ha='center')
+
+    title = f"{symbol} | {result} | Entry: {entry_time.strftime('%Y-%m-%d %H:%M')} | {trade['Entry Type']} Trigger"
+    ax.set_title(title, color="white", fontsize=14, fontweight="bold", pad=20)
+    ax.set_ylabel("Price (USDT)", color="#94a3b8")
+    ax.grid(alpha=0.05, color="white")
+    ax.tick_params(colors="#64748b", labelsize=9)
+
+    xticks = np.linspace(0, len(view) - 1, 10).astype(int)
     ax.set_xticks(xticks)
     ax.set_xticklabels([view.index[i].strftime("%m-%d %H:%M") for i in xticks], rotation=25, ha="right")
 
-    leg = ax.legend(facecolor="#161616")
-    for text in leg.get_texts():
-        text.set_color("white")
+    leg = ax.legend(facecolor="#111114", edgecolor="#333", loc="upper left", fontsize=9)
+    for text in leg.get_texts(): text.set_color("white")
 
     plt.tight_layout()
-    plt.savefig("trade_example_v4.png", dpi=150, bbox_inches="tight", facecolor=fig.get_facecolor())
+    plt.savefig(os.path.join("trades", filename), dpi=150, bbox_inches="tight", facecolor=fig.get_facecolor())
     plt.close(fig)
 
 
 # ─────────────────────────────────────────────
 # MAIN
 # ─────────────────────────────────────────────
-def run_backtest() -> None:
+def run_backtest(profile_name: str = "balanced") -> None:
     print("=" * 62)
-    print("  TTrades OB Strategy v4.1 - XRP/USDT")
+    print(f"  TTrades OB Strategy v4.1 - {SYMBOL}")
     print(f"  RR: 1:{int(RISK_REWARD)}  |  SL: ${FIXED_SL_USDT}  |  TP: ${FIXED_SL_USDT*RISK_REWARD:.0f}  |  {DAYS_BACK} days")
     print(f"  Top-Down TFs: 1d -> 1h -> {PARAMS['entry_timeframe']}")
+    print(f"  Profile: {profile_name}")
     print("=" * 62)
 
     print("\n[DATA] Fetching 1 year of OHLCV data (~30s)...")
@@ -675,7 +771,8 @@ def run_backtest() -> None:
         account += pnl
         eq_curve.append(account)
 
-        trades.append({
+        trade_record = {
+            "Symbol"    : SYMBOL,
             "Entry Time": trade_setup["entry_time"].strftime("%Y-%m-%d %H:%M"),
             "Exit Time" : exit_time.strftime("%Y-%m-%d %H:%M") if exit_time else "-",
             "Entry $"   : round(trade_setup["entry"], 4),
@@ -685,7 +782,14 @@ def run_backtest() -> None:
             "Entry Type": trade_setup["entry_type"],
             "PnL"       : round(pnl, 2),
             "Account"   : round(account, 2),
-        })
+            "exit_ts"   : exit_time,
+        }
+        trades.append(trade_record)
+        
+        # Save visualization for this trade
+        fname = f"trade_{len(trades)}_{trade_setup['entry_time'].strftime('%m%d_%H%M')}.png"
+        plot_trade(df_entry, trade_record, SYMBOL, PARAMS["entry_timeframe"], fname)
+        
         ob["used"] = True
 
     # Always show funnel stats
@@ -760,10 +864,17 @@ def run_backtest() -> None:
     print("\nTrade Log:")
     print(df_t.to_string(index=False))
 
+    if os.path.exists("trade_log_v4.csv"):
+        try:
+            existing_df = pd.read_csv("trade_log_v4.csv")
+            df_t = pd.concat([existing_df, df_t], ignore_index=True)
+            df_t.drop_duplicates(subset=["Symbol", "Entry Time"], keep="last", inplace=True)
+        except Exception:
+            pass
+            
     df_t.to_csv("trade_log_v4.csv", index=False)
-    print("\nSaved: trade_log_v4.csv")
-    plot_example_trade(df_entry, trades, SYMBOL, PARAMS["entry_timeframe"])
-    print("Saved: trade_example_v4.png")
+    print("\nSaved: trade_log_v4.csv (Cumulative)")
+    print(f"Saved: {len(trades)} detailed trade charts in 'trades/' folder.")
 
     # ── Charts ──
     fig, axes = plt.subplots(3, 1, figsize=(14, 12))
@@ -839,5 +950,43 @@ def run_backtest() -> None:
     print("\nPrioritize statistical validity over trade count.")
 
 
+def parse_args() -> argparse.Namespace:
+    """CLI options for quick parameter experimentation."""
+    parser = argparse.ArgumentParser(description="SMC Backtester")
+    parser.add_argument("--symbol", default=SYMBOL, help="Trading symbol, e.g. BTC/USDT")
+    parser.add_argument("--days", type=int, default=DAYS_BACK, help="Lookback days")
+    parser.add_argument(
+        "--profile",
+        default="balanced",
+        choices=sorted(PARAM_PRESETS.keys()),
+        help="Parameter preset profile",
+    )
+    parser.add_argument("--entry-tf", choices=["5m", "15m"], help="Entry timeframe override")
+    parser.add_argument("--debug", action="store_true", help="Enable debug logs")
+    parser.add_argument("--no-debug", action="store_true", help="Disable debug logs")
+    parser.add_argument("--show-plots", action="store_true", help="Show matplotlib windows")
+    parser.add_argument(
+        "--set",
+        action="append",
+        default=[],
+        help="Arbitrary param override. Repeatable. Example: --set msb_break_mult=0.02",
+    )
+    return parser.parse_args()
+
+
 if __name__ == "__main__":
-    run_backtest()
+    args = parse_args()
+
+    SYMBOL = args.symbol
+    DAYS_BACK = args.days
+    SHOW_PLOTS = args.show_plots
+
+    PARAMS = build_params(args.profile, args.set)
+    if args.entry_tf:
+        PARAMS["entry_timeframe"] = args.entry_tf
+    if args.debug:
+        PARAMS["debug_mode"] = True
+    if args.no_debug:
+        PARAMS["debug_mode"] = False
+
+    run_backtest(profile_name=args.profile)

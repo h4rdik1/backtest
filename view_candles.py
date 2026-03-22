@@ -10,6 +10,25 @@ DIRECTORY = os.getcwd()
 
 class ViewerHandler(http.server.SimpleHTTPRequestHandler):
     def do_GET(self):
+        # Custom API to list trades
+        if self.path == '/api/list_trades':
+            self.send_response(200)
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            
+            log_file = "trade_log_v4.csv"
+            trades = []
+            if os.path.exists(log_file):
+                import pandas as pd
+                try:
+                    df = pd.read_csv(log_file).fillna("")
+                    trades = df.to_dict(orient='records')
+                except Exception as e:
+                    print(f"Error reading trades: {e}")
+            
+            self.wfile.write(json.dumps(trades).encode())
+            return
+
         # Custom API to list symbols and their timeframes
         if self.path == '/api/list_data':
             self.send_response(200)
@@ -36,10 +55,8 @@ def run_viewer():
     print("=" * 62)
     print(f"  Scanning: {os.path.join(DIRECTORY, 'prev_candles')}")
     
-    # Ensure view_candles.html is named correctly for the server
-    # We will assume it's at the root and accessed as /view_candles.html
-    
     Handler = ViewerHandler
+    socketserver.TCPServer.allow_reuse_address = True
     with socketserver.TCPServer(("", PORT), Handler) as httpd:
         url = f"http://localhost:{PORT}/view_candles.html"
         print(f"\n  [SUCCESS] Server started at {url}")
