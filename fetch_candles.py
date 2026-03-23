@@ -9,8 +9,8 @@ from datetime import datetime, timedelta, timezone
 # ─────────────────────────────────────────────
 SYMBOL = 'SOL/USDT'
 EXCHANGE_ID = 'binance'
-TIMEFRAMES = ["1d", "1h", "15m", "5m"]
-LOOKBACK_DAYS = 365
+TIMEFRAMES = ["1w", "1d", "4h", "1h", "15m", "5m"]
+LOOKBACK_DAYS = 730
 
 def fetch_history(symbol, timeframe, days):
     """Fetch full history for a given timeframe using pagination."""
@@ -40,18 +40,28 @@ def fetch_history(symbol, timeframe, days):
     df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms', utc=True)
     return df
 
+import argparse
+
 def run_fetcher():
+    parser = argparse.ArgumentParser(description="SMC Data Fetcher")
+    parser.add_argument("--symbol", default="BTC/USDT", help="Trading symbol e.g BTC/USDT")
+    parser.add_argument("--days", type=int, default=LOOKBACK_DAYS, help="Lookback days")
+    args = parser.parse_args()
+    
+    symbol = args.symbol
+    days = args.days
+    
     print("=" * 62)
-    print(f"  SMC DATA FETCHER - {SYMBOL}")
-    print(f"  Fetching {LOOKBACK_DAYS} days for: {TIMEFRAMES}")
+    print(f"  SMC DATA FETCHER - {symbol}")
+    print(f"  Fetching {days} days for: {TIMEFRAMES}")
     print("=" * 62)
     
-    safe_symbol = SYMBOL.replace("/", "_")
+    safe_symbol = symbol.replace("/", "_")
     output_dir = os.path.join("prev_candles", safe_symbol)
     os.makedirs(output_dir, exist_ok=True)
     
     for tf in TIMEFRAMES:
-        df = fetch_history(SYMBOL, tf, LOOKBACK_DAYS)
+        df = fetch_history(symbol, tf, days)
         filename = os.path.join(output_dir, f"{tf}.csv")
         df.to_csv(filename, index=False)
         print(f"   SUCCESS: Saved {len(df):,} candles to {filename}")
