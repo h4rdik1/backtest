@@ -8,12 +8,17 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
     <style>
         :root {
-            --bg-color: #0b0b0e;
-            --sidebar-bg: #131317;
+            --bg-color: #0d0d12;
+            --sidebar-bg: #15151e;
             --accent-color: #3b82f6;
+            --fvg-bull: rgba(34, 197, 94, 0.15);
+            --fvg-bear: rgba(239, 68, 68, 0.15);
+            --ob-color: rgba(59, 130, 246, 0.2);
+            --confluence-color: rgba(251, 191, 36, 0.3);
             --text-primary: #f8fafc;
             --text-secondary: #94a3b8;
-            --border-color: #1e293b;
+            --border-color: #23232e;
+            --tier-aplus: #fbbf24;
             --win-color: #22c55e;
             --loss-color: #ef4444;
         }
@@ -119,6 +124,15 @@
         .trade-result { font-weight: 600; }
         .trade-result.WIN { color: var(--win-color); }
         .trade-result.LOSS { color: var(--loss-color); }
+        .tier-badge {
+            font-size: 0.65rem;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-weight: 700;
+            background: #23232e;
+            color: var(--text-secondary);
+        }
+        .tier-aplus { color: var(--tier-aplus); border: 1px solid var(--tier-aplus); }
 
         /* Equity Wrapper */
         #equity-chart {
@@ -209,6 +223,11 @@
         let chart = null;
         let candleSeries = null;
         let volumeSeries = null;
+        
+        let fvgBullSeries = null;
+        let fvgBearSeries = null;
+        let obSeries = null;
+        
         let priceLines = [];
 
         let equityChart = null;
@@ -234,6 +253,16 @@
                 color: '#26a69a', priceFormat: { type: 'volume' }, priceScaleId: '', 
             });
             volumeSeries.priceScale().applyOptions({ scaleMargins: { top: 0.8, bottom: 0 } });
+
+            // Setup Overlay Series (using candlesticks to simulate boxes)
+            const commonZoneOptions = {
+                wickVisible: false, borderVisible: false, 
+                priceLineVisible: false, highlightEnabled: false,
+                pane: 0
+            };
+            fvgBullSeries = chart.addCandlestickSeries({...commonZoneOptions, upColor: 'rgba(34, 197, 94, 0.2)', downColor: 'rgba(34, 197, 94, 0.1)'});
+            fvgBearSeries = chart.addCandlestickSeries({...commonZoneOptions, upColor: 'rgba(239, 68, 68, 0.2)', downColor: 'rgba(239, 68, 68, 0.1)'});
+            obSeries = chart.addCandlestickSeries({...commonZoneOptions, upColor: 'rgba(59, 130, 246, 0.25)', downColor: 'rgba(59, 130, 246, 0.25)'});
 
             // Equity Sparkline
             const equityContainer = document.getElementById('equity-chart');
@@ -298,14 +327,23 @@
             const list = document.getElementById('trade-list');
             list.innerHTML = '';
             tradeLog.forEach((t, idx) => {
+                // Determine field names
+                const result = t.Result || t.result || "Unknown";
+                const pnl = parseFloat(t.PnL || t.pnl || 0);
+                const entryTime = t['Entry Time'] || t['entry_time'] || "";
+                const symbol = t.Symbol || t.symbol || "";
+                const strategy = t['Entry Type'] || t['strategy'] || "";
+                const tier = t.setup_tier || "B";
+
                 const div = document.createElement('div');
-                div.className = `trade-item ${t.Result}`;
+                div.className = `trade-item ${result}`;
                 div.innerHTML = `
                     <div class="trade-header">
-                        <span class="trade-result ${t.Result}">${t.Result} (${t.PnL > 0 ? '+' : ''}${t.PnL}$)</span>
-                        <span class="trade-time">${t['Entry Time'].split(' ')[0]}</span>
+                        <span class="trade-result ${result}">${result} (${pnl > 0 ? '+' : ''}${pnl.toFixed(2)}$)</span>
+                        <span class="tier-badge ${tier === 'A++' ? 'tier-aplus' : ''}">${tier}</span>
                     </div>
-                    <div style="font-size: 0.75rem; color: #94a3b8">${t['Symbol']} | ${t['Entry Type']} Entry</div>
+                    <div style="font-size: 0.75rem; color: #94a3b8">${symbol} | ${strategy}</div>
+                    <div class="trade-time">${entryTime}</div>
                 `;
                 div.onclick = () => jumpToTrade(t);
                 list.appendChild(div);
@@ -317,8 +355,11 @@
             const data = [{ time: 0, value: 1000 }]; // Assuming 1000 start
             let current = 1000;
             tradeLog.forEach((t, i) => {
-                current = parseFloat(t.Account);
-                data.push({ time: i + 1, value: current });
+                const acct = t.Account || t.account;
+                if (acct) {
+                    current = parseFloat(acct);
+                    data.push({ time: i + 1, value: current });
+                }
             });
             equitySeries.setData(data);
             equityChart.timeScale().fitContent();
@@ -352,8 +393,52 @@
 
             candleSeries.setData(candles);
             volumeSeries.setData(volumes);
+            await loadOverlays(symbol, tf, candles);
             chart.timeScale().fitContent();
             document.getElementById('overlay').style.display = 'none';
+        }
+
+        async function loadOverlays(symbol, tf, candles) {
+            fvgBullSeries.setData([]);
+            fvgBearSeries.setData([]);
+            obSeries.setData([]);
+
+            const resp = await fetch(`/api/get_overlays?symbol=${symbol}&tf=${tf}`);
+            const data = await resp.json();
+            
+            // Map zones to candle timestamps
+            const candleTimes = candles.map(c => c.time);
+            
+            const bullData = [];
+            const bearData = [];
+            const obData = [];
+
+            data.fvgs.forEach(fvg => {
+                // Draw for next 5 candles after start (approximate visualization)
+                const startIdx = candleTimes.findIndex(t => t >= fvg.start);
+                if (startIdx !== -1) {
+                    for (let j = 0; j < 6; j++) {
+                        if (startIdx + j >= candleTimes.length) break;
+                        const d = { time: candleTimes[startIdx + j], open: fvg.top, high: fvg.top, low: fvg.btm, close: fvg.btm };
+                        if (fvg.type === 'bull') bullData.push(d);
+                        else bearData.push(d);
+                    }
+                }
+            });
+
+            data.obs.forEach(ob => {
+                const startIdx = candleTimes.findIndex(t => t >= ob.start);
+                if (startIdx !== -1) {
+                    for (let j = 0; j < 15; j++) {
+                        if (startIdx + j >= candleTimes.length) break;
+                        obData.push({ time: candleTimes[startIdx + j], open: ob.top, high: ob.top, low: ob.btm, close: ob.btm });
+                    }
+                }
+            });
+
+            fvgBullSeries.setData(bullData);
+            fvgBearSeries.setData(bearData);
+            obSeries.setData(obData);
         }
 
         async function jumpToTrade(trade) {

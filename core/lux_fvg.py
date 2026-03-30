@@ -1,7 +1,7 @@
 import pandas as pd
 import numpy as np
 
-def detect_luxalgo_fvgs(df: pd.DataFrame, wick_ratio: float = 0.36, avg_body_lookback: int = 10, min_size_mult: float = 0.5):
+def detect_luxalgo_fvgs(df: pd.DataFrame, wick_ratio: float = 0.36, avg_body_lookback: int = 10, min_size_mult: float = 0.5, min_volume_mult: float = 1.0):
     """
     Implements exact LuxAlgo FVG logic using Pandas vectorization.
     Adds 'fvg_bull', 'fvg_bull_btm', 'fvg_bull_top', 'fvg_bear', 'fvg_bear_top', 'fvg_bear_btm' to df.
@@ -14,12 +14,17 @@ def detect_luxalgo_fvgs(df: pd.DataFrame, wick_ratio: float = 0.36, avg_body_loo
     # 2. Rolling Averages
     df['avg_body'] = df['body'].rolling(window=avg_body_lookback, min_periods=1).mean()
     df['avg_range'] = (df['high'] - df['low']).rolling(window=10, min_periods=1).mean()
+    df['avg_volume'] = df['volume'].rolling(window=20, min_periods=1).mean().shift(1)
     
     # 3. Displacement Logic (Candle 2)
     # clean_body = wicks are small relative to body
     df['clean_body'] = (df['upper_wick'] < (df['body'] * wick_ratio)) & (df['lower_wick'] < (df['body'] * wick_ratio))
     df['large_body'] = df['body'] > df['avg_body']
-    df['is_displacement'] = df['clean_body'] & df['large_body']
+    
+    # Volume Filter: Displacement must have significant volume
+    df['volume_valid'] = df['volume'] >= (df['avg_volume'] * min_volume_mult)
+    
+    df['is_displacement'] = df['clean_body'] & df['large_body'] & df['volume_valid']
     
     # Directional Displacement
     df['bull_disp'] = df['is_displacement'] & (df['close'] > df['open'])
@@ -60,8 +65,9 @@ def detect_luxalgo_fvgs(df: pd.DataFrame, wick_ratio: float = 0.36, avg_body_loo
     df['fvg_bear_mid'] = np.where(df['fvg_bear'], c3_high + (fvg_size_bear / 2), np.nan)
     
     # Cleanup intermediate columns
-    df.drop(columns=['body', 'upper_wick', 'lower_wick', 'avg_body', 'avg_range', 'clean_body', 'large_body', 'is_displacement', 'bull_disp', 'bear_disp'], inplace=True)
+    df.drop(columns=['body', 'upper_wick', 'lower_wick', 'avg_body', 'avg_range', 'avg_volume', 'clean_body', 'large_body', 'volume_valid', 'is_displacement', 'bull_disp', 'bear_disp'], inplace=True)
     return df
+
 
 def detect_liquidity_sweeps(df: pd.DataFrame, lookback: int = 10):
     """
