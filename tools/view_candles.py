@@ -10,6 +10,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 import core.lux_fvg as lux
 import models.backtest_cisd as cisd
+
 PORT = 8000
 DIRECTORY = os.path.dirname(os.path.abspath(__file__))
 
@@ -24,7 +25,8 @@ class ViewerHandler(http.server.SimpleHTTPRequestHandler):
             self.send_header('Content-type', 'application/json')
             self.end_headers()
             
-            log_file = os.path.join("..", "exports", "trade_log_v5.csv")
+            # Use absolute path for trade log
+            log_file = os.path.abspath(os.path.join(DIRECTORY, "..", "exports", "trade_log_v5.csv"))
             trades = []
             if os.path.exists(log_file):
                 import pandas as pd
@@ -44,7 +46,12 @@ class ViewerHandler(http.server.SimpleHTTPRequestHandler):
             self.end_headers()
             
             data = {}
-            base_path = os.path.join(DIRECTORY, "..", "data", "ohlcv")
+            # Use absolute path to avoid Windows pathing issues
+            base_path = os.path.abspath(os.path.join(DIRECTORY, "..", "data", "ohlcv"))
+            if not os.path.exists(base_path):
+                # Fallback for relative paths in case of different execution context
+                base_path = os.path.abspath(os.path.join(os.getcwd(), "data", "ohlcv"))
+            
             if os.path.exists(base_path):
                 symbols = [d for d in os.listdir(base_path) if os.path.isdir(os.path.join(base_path, d))]
                 for symbol in symbols:
@@ -57,7 +64,6 @@ class ViewerHandler(http.server.SimpleHTTPRequestHandler):
 
         # NEW: API to get FVG and OB zones for visualization
         if self.path.startswith('/api/get_overlays'):
-            # Query param parsing (naive)
             from urllib.parse import urlparse, parse_qs
             parsed = urlparse(self.path)
             params = parse_qs(parsed.query)
@@ -73,9 +79,8 @@ class ViewerHandler(http.server.SimpleHTTPRequestHandler):
             
             if symbol and tf:
                 try:
-                    # Replace _ with / for data loading
                     sym_load = symbol.replace('_', '/')
-                    df = cisd.fetch_ohlcv_full(sym_load, tf, 30) # 30 days history
+                    df = cisd.fetch_ohlcv_full(sym_load, tf, 30)
                     
                     # 1. Calc FVGs
                     fvgs_df = lux.detect_luxalgo_fvgs(df.copy())
@@ -113,7 +118,6 @@ class ViewerHandler(http.server.SimpleHTTPRequestHandler):
 
         # NEW: Custom API to serve CSV data directly
         if self.path.startswith('/prev_candles/'):
-            # Path format: /prev_candles/BTC_USDT/1h.csv
             parts = self.path.split('/')
             if len(parts) >= 4:
                 symbol = parts[2]
@@ -135,7 +139,6 @@ def run_viewer():
     print("=" * 62)
     print("  SMC VISION - INTERACTIVE VIEWER")
     print("=" * 62)
-    print(f"  Scanning: {os.path.join(DIRECTORY, '..', 'data', 'ohlcv')}")
     
     Handler = ViewerHandler
     socketserver.TCPServer.allow_reuse_address = True

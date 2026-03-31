@@ -16,7 +16,7 @@ LIVE_WATCHLIST            = ["BTC/USDT", "ETH/USDT", "SOL/USDT", "BNB/USDT", "XR
 # ---------------------------------------------------
 DATA_DIR                  = "data/ohlcv"
 TIMEFRAMES                = ["5m", "15m", "1h", "4h", "1d", "1w"]
-DAYS_BACK                 = 1095      # 3 years of historical data
+DAYS_BACK                 = 60      # 60 days of historical data
 TRAIN_END                 = "2023-12-31"
 TEST_START                = "2024-01-01"
 
@@ -26,7 +26,7 @@ TEST_START                = "2024-01-01"
 RISK_REWARD               = 3.0       # Take profit at 3x the risk
 FIXED_SL_USDT             = 25.0      # Dollar risk per trade
 ACCOUNT_SIZE              = 1000.0    # Starting account balance
-AUTO_BREAKEVEN_R          = 1.5       # Move SL to entry after 1.5R of profit
+AUTO_BREAKEVEN_R          = 2.0       # Increased from 1.5R to let trades breathe
 
 # ── FVG ENGINE (LuxAlgo exact values) ──────────────
 FVG_WICK_RATIO            = 0.36      # Max wick-to-body ratio for displacement

@@ -13,7 +13,21 @@ EX_ID = 'binance'
 def fetch_history(symbol, timeframe, days, exchange_id='binance'):
     """Fetch full history for a given timeframe using pagination."""
     exchange_class = getattr(ccxt, exchange_id)
-    exchange = exchange_class({'enableRateLimit': True})
+    if exchange_id == 'binance':
+        exchange = exchange_class({
+            'enableRateLimit': True,
+            'options': {
+                'adjustForTimeDifference': True,
+                'urls': {
+                    'api': {
+                        'public': 'https://api3.binance.com/api/v3',
+                        'private': 'https://api3.binance.com/api/v3',
+                    }
+                }
+            }
+        })
+    else:
+        exchange = exchange_class({'enableRateLimit': True})
     since = int((datetime.now(timezone.utc) - timedelta(days=days)).timestamp() * 1000)
     limit = 1000
     all_data = []
