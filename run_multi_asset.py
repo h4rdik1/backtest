@@ -11,7 +11,7 @@ import models.backtest_cisd as cisd
 import models.backtest_limit as limit
 from core.config import (
     SYMBOLS, DAYS_BACK, TRAIN_END, TEST_START,
-    MIN_TRADES_FOR_VALIDITY, DEFAULT_LTF
+    MIN_TRADES_FOR_VALIDITY, ALIGNMENTS, ACTIVE_CHAIN, chain_label
 )
 from core.analysis import (
     print_enhanced_stats, walk_forward_split, print_walk_forward,
@@ -38,7 +38,8 @@ def get_metrics(trades: List[Dict], label: str) -> Dict:
 
 def run_multi_asset():
     parser = argparse.ArgumentParser(description="Multi-Asset Backtest Runner")
-    parser.add_argument("--alignment", choices=["daily", "weekly"], default="daily")
+    parser.add_argument("--chain", default=None,
+                        help=f"Alignment chain ({', '.join(ALIGNMENTS.keys())}). Default: {ACTIVE_CHAIN}")
     parser.add_argument("--symbols", nargs="+", default=None,
                         help="Override symbol list (default: config.py SYMBOLS)")
     parser.add_argument("--walk-forward", action="store_true",
@@ -48,18 +49,23 @@ def run_multi_asset():
     args = parser.parse_args()
 
     symbols = args.symbols or SYMBOLS
+    chain_name = args.chain or ACTIVE_CHAIN
 
-    # Determine timeframes from alignment
-    if args.alignment == "daily":
-        tf_context, tf_bias, tf_ltf = "1d", "1h", DEFAULT_LTF
-    else:
-        tf_context, tf_bias, tf_ltf = "1w", "4h", "15m"
+    if chain_name not in ALIGNMENTS:
+        print(f"  [ERROR] Unknown chain '{chain_name}'. Available: {list(ALIGNMENTS.keys())}")
+        return
+
+    chain = ALIGNMENTS[chain_name]
+    tf_context = chain["context"]
+    tf_bias = chain["bias"]
+    tf_ltf = chain["entry"]
 
     print("=" * 70)
-    print(f"  MULTI-ASSET BACKTEST — {len(symbols)} symbols")
-    print(f"  Alignment: {args.alignment.upper()}")
+    print(f"  MULTI-ASSET BACKTEST -- {len(symbols)} symbols")
+    print(f"  Chain: {chain_name.upper()} ({chain_label(chain_name)})")
     print(f"  Symbols: {', '.join(symbols)}")
     print("=" * 70)
+
 
     summary_rows = []            # for the combined table
     all_cisd_trades = []         # combined across all symbols
