@@ -11,7 +11,7 @@ import models.backtest_cisd as cisd
 import models.backtest_limit as limit
 from core.config import (
     SYMBOLS, DAYS_BACK, TRAIN_END, TEST_START,
-    MIN_TRADES_FOR_VALIDITY
+    MIN_TRADES_FOR_VALIDITY, DEFAULT_LTF
 )
 from core.analysis import (
     print_enhanced_stats, walk_forward_split, print_walk_forward,
@@ -51,7 +51,7 @@ def run_multi_asset():
 
     # Determine timeframes from alignment
     if args.alignment == "daily":
-        tf_context, tf_bias, tf_ltf = "1d", "1h", "5m"
+        tf_context, tf_bias, tf_ltf = "1d", "1h", DEFAULT_LTF
     else:
         tf_context, tf_bias, tf_ltf = "1w", "4h", "15m"
 

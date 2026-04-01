@@ -10,7 +10,8 @@ import argparse
 from core.analysis import log_signal, compare_live_vs_backtest, print_live_comparison
 from core.config import (
     LIVE_WATCHLIST, USE_LTF_OB_ENTRY, USE_HTF_OB_CONFLUENCE, format_price,
-    FVG_WICK_RATIO, FVG_AVG_BODY_LOOKBACK, FVG_MIN_SIZE_MULT, FVG_MIN_VOLUME_MULT
+    FVG_WICK_RATIO, FVG_AVG_BODY_LOOKBACK, FVG_MIN_SIZE_MULT, FVG_MIN_VOLUME_MULT,
+    DEFAULT_LTF
 )
 
 
@@ -24,7 +25,7 @@ def scan_symbol(symbol: str, alignment: str = "daily", exchange_id: str = "binan
     print(f"\n--- SCANNING {symbol} ({alignment.upper()}) on {exchange_id.upper()} ---")
 
     if alignment == "daily":
-        tf_context, tf_bias, tf_ltf = "1d", "1h", "5m"
+        tf_context, tf_bias, tf_ltf = "1d", "1h", DEFAULT_LTF
     else:
         tf_context, tf_bias, tf_ltf = "1w", "4h", "15m"
 
