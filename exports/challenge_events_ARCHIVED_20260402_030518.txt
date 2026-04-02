@@ -1,0 +1,40 @@
+[2026-04-02 00:57:23] [RESET] Challenge state reset. Starting fresh $5,000.
+[2026-04-02 00:57:39] [SIGNALS] 6 signal(s) found. Taking top 2.
+[2026-04-02 00:57:39] [OPEN] T0001 BTC/USDT SHORT  Entry: 68,159.06  SL: 68,315.42  TP: 67,846.35  Tier: B  Chain: DAILY  Regime: trending_down
+[2026-04-02 00:57:39] [OPEN] T0002 ETH/USDT SHORT  Entry: 2,148.72  SL: 2,154.71  TP: 2,136.73  Tier: B  Chain: DAILY  Regime: ranging
+[2026-04-02 00:57:47] [CHECK] Checking 2 open trade(s)...
+[2026-04-02 00:57:50] [WIN] T0002 ETH/USDT SHORT  WIN  +$100  Balance: $5100.00  Bias: Bearish (Bear Sweep @ 2026-04-01 17:00, confirmed @ 2026-04-
+[2026-04-02 00:58:02] [SIGNALS] 5 signal(s) found. Taking top 1.
+[2026-04-02 00:58:02] [OPEN] T0003 ETH/USDT SHORT  Entry: 2,148.72  SL: 2,154.71  TP: 2,136.73  Tier: B  Chain: DAILY  Regime: ranging
+[2026-04-02 01:08:02] [CHECK] Checking 2 open trade(s)...
+[2026-04-02 01:08:03] [WIN] T0003 ETH/USDT SHORT  WIN  +$100  Balance: $5200.00  Bias: Bearish (Bear Sweep @ 2026-04-01 17:00, confirmed @ 2026-04-
+[2026-04-02 01:08:14] [SIGNALS] 5 signal(s) found. Taking top 1.
+[2026-04-02 01:08:14] [OPEN] T0004 ETH/USDT SHORT  Entry: 2,148.72  SL: 2,154.71  TP: 2,136.73  Tier: B  Chain: DAILY  Regime: ranging
+[2026-04-02 01:18:14] [CHECK] Checking 2 open trade(s)...
+[2026-04-02 01:18:15] [SCAN] Max positions (2) open. Waiting for closes.
+[2026-04-02 01:28:15] [CHECK] Checking 2 open trade(s)...
+[2026-04-02 01:28:16] [SCAN] Max positions (2) open. Waiting for closes.
+[2026-04-02 01:38:16] [CHECK] Checking 2 open trade(s)...
+[2026-04-02 01:38:16] [WIN] T0004 ETH/USDT SHORT  WIN  +$100  Balance: $5300.00  Bias: Bearish (Bear Sweep @ 2026-04-01 17:00, confirmed @ 2026-04-
+[2026-04-02 01:38:30] [SIGNALS] 3 signal(s) found. Taking top 1.
+[2026-04-02 01:38:30] [OPEN] T0005 BTC/USDT SHORT  Entry: 68,362.40  SL: 68,499.97  TP: 68,087.26  Tier: B  Chain: WEEKLY  Regime: ranging
+[2026-04-02 01:48:30] [CHECK] Checking 2 open trade(s)...
+[2026-04-02 01:48:31] [WIN] T0005 BTC/USDT SHORT  WIN  +$100  Balance: $5400.00  Bias: Bearish (Bear Sweep @ 2026-03-31 16:00, confirmed @ 2026-04-
+[2026-04-02 01:48:43] [SIGNALS] 5 signal(s) found. Taking top 1.
+[2026-04-02 01:48:43] [OPEN] T0006 ETH/USDT SHORT  Entry: 2,138.48  SL: 2,142.64  TP: 2,130.16  Tier: B  Chain: DAILY  Regime: ranging
+[2026-04-02 01:49:11] [CHECK] Checking 2 open trade(s)...
+[2026-04-02 01:49:14] [SCAN] Max positions (2) open. Waiting for closes.
+[2026-04-02 01:59:14] [CHECK] Checking 2 open trade(s)...
+[2026-04-02 01:59:14] [SCAN] Max positions (2) open. Waiting for closes.
+[2026-04-02 02:09:14] [CHECK] Checking 2 open trade(s)...
+[2026-04-02 02:09:15] [SCAN] Max positions (2) open. Waiting for closes.
+[2026-04-02 02:19:15] [CHECK] Checking 2 open trade(s)...
+[2026-04-02 02:19:16] [LOSS] T0006 ETH/USDT SHORT  LOSS  -$50  Balance: $5350.00  Bias: Bearish (Bear Sweep @ 2026-04-01 17:00, confirmed @ 2026-04-
+[2026-04-02 02:19:28] [SIGNALS] 4 signal(s) found. Taking top 1.
+[2026-04-02 02:19:28] [OPEN] T0007 ETH/USDT SHORT  Entry: 2,138.48  SL: 2,142.64  TP: 2,130.16  Tier: B  Chain: DAILY  Regime: ranging
+[2026-04-02 02:19:28] [VISITED] Marked FVG as traded: ETH/USDT|daily|2136.46|2140.5
+[2026-04-02 02:29:28] [CHECK] Checking 2 open trade(s)...
+[2026-04-02 02:29:29] [LOSS] T0007 ETH/USDT SHORT  LOSS  -$50  Balance: $5300.00  Bias: Bearish (Bear Sweep @ 2026-04-01 17:00, confirmed @ 2026-04-
+[2026-04-02 02:29:40] [SIGNALS] 3 signal(s) found. Taking top 1.
+[2026-04-02 02:29:40] [OPEN] T0008 BTC/USDT SHORT  Entry: 68,362.40  SL: 68,499.97  TP: 68,087.26  Tier: B  Chain: WEEKLY  Regime: ranging
+[2026-04-02 02:29:40] [VISITED] Marked FVG as traded: BTC/USDT|weekly|68293.26|68431.54

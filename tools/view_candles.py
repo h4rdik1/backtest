@@ -4,155 +4,192 @@ import os
 import json
 import webbrowser
 import sys
+import pandas as pd
+from urllib.parse import urlparse, parse_qs
+from datetime import datetime
 
 # Add root to sys.path
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+sys.path.append(ROOT_DIR)
 
-import core.lux_fvg as lux
 import models.backtest_cisd as cisd
+import core.lux_fvg as lux
 
 PORT = 8000
 DIRECTORY = os.path.dirname(os.path.abspath(__file__))
+STATE_FILE = os.path.join(ROOT_DIR, "exports", "challenge_state.json")
+TRADES_FILE = os.path.join(ROOT_DIR, "exports", "challenge_trades.csv")
+
+# Simple in-memory cache to prevent redundant Binance calls
+CACHE = {}
+CACHE_TTL = 60 # 60 seconds
+
+class ThreadedHTTPServer(socketserver.ThreadingMixIn, http.server.HTTPServer):
+    daemon_threads = True
 
 class ViewerHandler(http.server.SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=DIRECTORY, **kwargs)
     
+    def get_cached(self, key):
+        if key in CACHE:
+            entry = CACHE[key]
+            if (datetime.now() - entry['time']).total_seconds() < CACHE_TTL:
+                return entry['data']
+        return None
+
+    def set_cache(self, key, data):
+        CACHE[key] = {'time': datetime.now(), 'data': data}
+
+    def end_headers(self):
+        self.send_header('Access-Control-Allow-Origin', '*')
+        self.send_header('Access-Control-Allow-Methods', 'GET')
+        self.send_header('Cache-Control', 'no-store, no-cache, must-revalidate')
+        super().end_headers()
+
     def do_GET(self):
-        # Custom API to list trades
-        if self.path == '/api/list_trades':
-            self.send_response(200)
-            self.send_header('Content-type', 'application/json')
-            self.end_headers()
-            
-            # Use absolute path for trade log
-            log_file = os.path.abspath(os.path.join(DIRECTORY, "..", "exports", "trade_log_v5.csv"))
-            trades = []
-            if os.path.exists(log_file):
-                import pandas as pd
-                try:
-                    df = pd.read_csv(log_file).fillna("")
-                    trades = df.to_dict(orient='records')
-                except Exception as e:
-                    print(f"Error reading trades: {e}")
-            
-            self.wfile.write(json.dumps(trades).encode())
-            return
-
-        # Custom API to list symbols and their timeframes
-        if self.path == '/api/list_data':
-            self.send_response(200)
-            self.send_header('Content-type', 'application/json')
-            self.end_headers()
-            
-            data = {}
-            # Use absolute path to avoid Windows pathing issues
-            base_path = os.path.abspath(os.path.join(DIRECTORY, "..", "data", "ohlcv"))
-            if not os.path.exists(base_path):
-                # Fallback for relative paths in case of different execution context
-                base_path = os.path.abspath(os.path.join(os.getcwd(), "data", "ohlcv"))
-            
-            if os.path.exists(base_path):
-                symbols = [d for d in os.listdir(base_path) if os.path.isdir(os.path.join(base_path, d))]
-                for symbol in symbols:
-                    tf_path = os.path.join(base_path, symbol)
-                    tfs = [f.replace(".csv", "") for f in os.listdir(tf_path) if f.endswith(".csv")]
-                    data[symbol] = tfs
-            
-            self.wfile.write(json.dumps(data).encode())
-            return
-
-        # NEW: API to get FVG and OB zones for visualization
-        if self.path.startswith('/api/get_overlays'):
-            from urllib.parse import urlparse, parse_qs
-            parsed = urlparse(self.path)
-            params = parse_qs(parsed.query)
-            
-            symbol = params.get('symbol', [None])[0]
-            tf = params.get('tf', [None])[0]
-            
-            self.send_response(200)
-            self.send_header('Content-type', 'application/json')
-            self.end_headers()
-            
-            overlays = {"fvgs": [], "obs": []}
-            
-            if symbol and tf:
-                try:
-                    sym_load = symbol.replace('_', '/')
-                    df = cisd.fetch_ohlcv_full(sym_load, tf, 30)
-                    
-                    # 1. Calc FVGs
-                    fvgs_df = lux.detect_luxalgo_fvgs(df.copy())
-                    bulls = fvgs_df[fvgs_df['fvg_bull']]
-                    bears = fvgs_df[fvgs_df['fvg_bear']]
-                    
-                    for idx, row in bulls.iterrows():
-                        overlays["fvgs"].append({
-                            "type": "bull",
-                            "start": idx.timestamp(),
-                            "top": row['fvg_bull_top'],
-                            "btm": row['fvg_bull_btm']
-                        })
-                    for idx, row in bears.iterrows():
-                        overlays["fvgs"].append({
-                            "type": "bear",
-                            "start": idx.timestamp(),
-                            "top": row['fvg_bear_top'],
-                            "btm": row['fvg_bear_btm']
-                        })
-                    
-                    # 2. Calc OBs
-                    obs_list = cisd.find_order_blocks(df)
-                    for ob in obs_list:
-                        overlays["obs"].append({
-                            "start": ob['time'].timestamp(),
-                            "top": ob['high'],
-                            "btm": ob['low']
-                        })
-                except Exception as e:
-                    print(f"Overlay error: {e}")
-            
-            self.wfile.write(json.dumps(overlays).encode())
-            return
-
-        # NEW: Custom API to serve CSV data directly
-        if self.path.startswith('/prev_candles/'):
-            parts = self.path.split('/')
-            if len(parts) >= 4:
-                symbol = parts[2]
-                tf_file = parts[3]
-                csv_path = os.path.abspath(os.path.join(DIRECTORY, "..", "data", "ohlcv", symbol, tf_file))
+        # 1. API: Get Challenge Status
+        if self.path == '/api/status':
+            try:
+                data = {"balance": 5000, "status": "INACTIVE"}
+                if os.path.exists(STATE_FILE):
+                    with open(STATE_FILE, 'r') as f:
+                        data = json.load(f)
                 
-                if os.path.exists(csv_path):
-                    self.send_response(200)
-                    self.send_header('Content-type', 'text/csv')
-                    self.send_header('Access-Control-Allow-Origin', '*')
-                    self.end_headers()
-                    with open(csv_path, 'rb') as f:
-                        self.wfile.write(f.read())
-                    return
+                self.send_response(200)
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps(data).encode())
+            except Exception as e:
+                print(f" [/api/status] Error: {e}")
+                self.send_error(500, str(e))
+            return
+
+        # 2. API: Get Trade History
+        if self.path == '/api/trades':
+            try:
+                trades = []
+                if os.path.exists(TRADES_FILE):
+                    df = pd.read_csv(TRADES_FILE)
+                    df = df.fillna("")
+                    trades = df.to_dict('records')
+                
+                self.send_response(200)
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps(trades).encode())
+            except Exception as e:
+                 print(f" [/api/trades] Error: {e}")
+                 self.send_error(500, str(e))
+            return
+
+        # 3. API: Get Live Candles from Binance
+        if self.path.startswith('/api/live_candles'):
+            query = urlparse(self.path).query
+            params = parse_qs(query)
+            symbol = params.get('symbol', ['BTC/USDT'])[0].replace('_', '/')
+            tf = params.get('tf', ['15m'])[0]
+            cache_key = f"candles_{symbol}_{tf}"
+            
+            cached_data = self.get_cached(cache_key)
+            if cached_data:
+                print(f" [CACHE] HIT: {symbol} {tf}")
+                self.send_response(200)
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps(cached_data).encode())
+                return
+
+            print(f" [API] Fetching candles: {symbol} {tf}...", end="", flush=True)
+            
+            try:
+                df = cisd.fetch_live_ohlcv(symbol, tf, limit=150)
+                candles = []
+                if not df.empty:
+                    for idx, row in df.iterrows():
+                        candles.append({
+                            "time": int(idx.timestamp()),
+                            "open": float(row['open']), "high": float(row['high']),
+                            "low": float(row['low']), "close": float(row['close']),
+                            "volume": float(row['volume'])
+                        })
+                
+                self.set_cache(cache_key, candles)
+                self.send_response(200)
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps(candles).encode())
+                print(" OK")
+            except Exception as e:
+                print(f" FAIL: {e}")
+                self.send_response(200) 
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps([]).encode())
+            return
+
+        # 4. API: Get Zones Overlay (FVGs/OBs)
+        if self.path.startswith('/api/overlays'):
+            query = urlparse(self.path).query
+            params = parse_qs(query)
+            symbol = params.get('symbol', ['BTC/USDT'])[0].replace('_', '/')
+            tf = params.get('tf', ['15m'])[0]
+            cache_key = f"overlays_{symbol}_{tf}"
+            
+            cached_data = self.get_cached(cache_key)
+            if cached_data:
+                self.send_response(200)
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps(cached_data).encode())
+                return
+
+            print(f" [API] Fetching overlays: {symbol} {tf}...", end="", flush=True)
+            
+            try:
+                overlays = {"fvgs": [], "obs": []}
+                df = cisd.fetch_live_ohlcv(symbol, tf, limit=100)
+                if not df.empty:
+                    fvgs = cisd.calc_fvgs(df)
+                    if not fvgs.empty:
+                        for idx, row in fvgs.iterrows():
+                            t = int(idx.timestamp()) if hasattr(idx, 'timestamp') else int(idx[0].timestamp())
+                            overlays['fvgs'].append({
+                                "start": t, "top": float(row['top']), "btm": float(row['btm']), "type": str(row['type'])
+                            })
+                    obs = cisd.calc_obs(df)
+                    if not obs.empty:
+                        for idx, row in obs.iterrows():
+                            t = int(idx.timestamp()) if hasattr(idx, 'timestamp') else int(idx[0].timestamp())
+                            overlays['obs'].append({
+                                "start": t, "top": float(row['top']), "btm": float(row['btm']), "type": str(row['type'])
+                            })
+                
+                self.set_cache(cache_key, overlays)
+                self.send_response(200)
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps(overlays).encode())
+                print(" OK")
+            except Exception as e:
+                print(f" FAIL: {e}")
+                self.send_response(200)
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"fvgs":[], "obs":[]}).encode())
+            return
 
         return super().do_GET()
 
 def run_viewer():
-    print("=" * 62)
-    print("  SMC VISION - INTERACTIVE VIEWER")
-    print("=" * 62)
-    
-    Handler = ViewerHandler
+    os.chdir(DIRECTORY)
     socketserver.TCPServer.allow_reuse_address = True
-    with socketserver.TCPServer(("", PORT), Handler) as httpd:
+    with ThreadedHTTPServer(("", PORT), ViewerHandler) as httpd:
         url = f"http://localhost:{PORT}/view_candles.html"
-        print(f"\n  [SUCCESS] Server started at {url}")
-        print("  [ACTION] Opening browser now...")
-        print("  [EXIT] Press Ctrl+C to stop the server.")
-        
+        print(f"\n  [SUCCESS] SMC Challenge Dashboard started at {url}")
+        print("  [EXIT] Press Ctrl+C to stop.")
         webbrowser.open(url)
-        try:
-            httpd.serve_forever()
-        except KeyboardInterrupt:
-            print("\n  [INFO] Server stopped.")
+        httpd.serve_forever()
 
 if __name__ == "__main__":
     run_viewer()

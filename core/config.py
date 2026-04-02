@@ -7,9 +7,18 @@
 # SETUP
 # --------------------------------------------------
 SETUP                     = "daily"
-SYMBOLS                   = ["BTC/USDT", "ETH/USDT", "SOL/USDT"]
+
+# ── CURATED WATCHLIST (April 2026) ─────────────────
+# Selected for: liquidity, clean SMC structure, institutional OB activity
+# BTC  - market anchor, cleanest HTF structure
+# ETH  - best FVG reactions, follows BTC with lag = entries
+# SOL  - highest volatility in top-10, great intraday setups
+# BNB  - cleaner OB structure, less noisy retail action
+# XRP  - strong liquidity sweeps, perfect CISD setups
+# LINK - most institutional of altcoins, textbook OBs
+SYMBOLS                   = ["BTC/USDT", "ETH/USDT", "SOL/USDT", "BNB/USDT", "XRP/USDT", "LINK/USDT"]
 EXCHANGE                  = "binance"
-LIVE_WATCHLIST            = ["BTC/USDT", "ETH/USDT", "SOL/USDT", "BNB/USDT", "XRP/USDT", "ADA/USDT", "DOGE/USDT", "LINK/USDT", "HYPE/USDT:okx"]
+LIVE_WATCHLIST            = ["BTC/USDT", "ETH/USDT", "SOL/USDT", "BNB/USDT", "XRP/USDT", "LINK/USDT"]
 
 # ---------------------------------------------------
 # TIMEFRAME ALIGNMENT CHAINS
@@ -47,8 +56,8 @@ TEST_START                = "2026-01-01"
 # RISK
 # ---------------------------------------------------
 RISK_REWARD               = 2.0       # 2R — at 40% WR this gives PF 1.33
-FIXED_SL_USDT             = 25.0      # Dollar risk per trade
-ACCOUNT_SIZE              = 1000.0    # Starting account balance
+FIXED_SL_USDT             = 50.0      # Dollar risk per trade (1% of $5000 account)
+ACCOUNT_SIZE              = 5000.0    # Live capital: $5,000
 AUTO_BREAKEVEN_R          = 1.8       # Move SL to entry at 1.8R
 
 # ── FVG ENGINE (LuxAlgo exact values) ──────────────

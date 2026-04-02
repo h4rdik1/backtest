@@ -56,6 +56,7 @@ def get_exchange(exchange_id: str = 'binance'):
             if exchange_id == "binance":
                 EXCHANGES[exchange_id] = exchange_class({
                     'enableRateLimit': True,
+                    'timeout': 10000,
                     'options': {
                         'defaultType': 'spot',
                         'adjustForTimeDifference': True,
@@ -68,7 +69,7 @@ def get_exchange(exchange_id: str = 'binance'):
                     }
                 })
             else:
-                EXCHANGES[exchange_id] = exchange_class({'enableRateLimit': True})
+                EXCHANGES[exchange_id] = exchange_class({'enableRateLimit': True, 'timeout': 10000})
         except AttributeError:
             available = ", ".join(ccxt.exchanges[:10]) + "..."
             raise ValueError(f"Exchange '{exchange_id}' not found. Supported: {available}")

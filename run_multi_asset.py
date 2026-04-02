@@ -187,7 +187,7 @@ def run_multi_asset():
 
     # ── Excel Export ──
     os.makedirs("exports", exist_ok=True)
-    output_path = f"exports/MultiAsset_Analysis_{args.alignment}.xlsx"
+    output_path = f"exports/MultiAsset_Analysis_{chain_name}.xlsx"
 
     with pd.ExcelWriter(output_path, engine="openpyxl") as writer:
         # Summary sheet

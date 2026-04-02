@@ -1,0 +1,34 @@
+  [00:26:57] ERROR: 'charmap' codec can't encode characters in position 0-69: character maps to <undefined>
+  [00:31:57] ERROR: 'charmap' codec can't encode characters in position 0-69: character maps to <undefined>
+  [00:36:57] ERROR: 'charmap' codec can't encode characters in position 0-69: character maps to <undefined>
+  [00:41:57] ERROR: 'charmap' codec can't encode characters in position 0-69: character maps to <undefined>
+
+======================================================================
+OVERNIGHT SCAN -- 2026-04-02 00:46:32
+Watchlist: BTC/USDT, ETH/USDT, SOL/USDT, BNB/USDT, XRP/USDT, LINK/USDT
+
+[2026-04-02 00:46:33] CHAIN: DAILY (1D -> 1H -> 5M)
+
+[2026-04-02 00:46:40] CHAIN: WEEKLY (1W -> 4H -> 15M)
+
+[2026-04-02 00:46:44] CHAIN: INTRADAY (12H -> 1H -> 5M)
+
+======================================================================
+OVERNIGHT SCAN -- 2026-04-02 00:51:49
+Watchlist: BTC/USDT, ETH/USDT, SOL/USDT, BNB/USDT, XRP/USDT, LINK/USDT
+
+[2026-04-02 00:51:49] CHAIN: DAILY (1D -> 1H -> 5M)
+
+[2026-04-02 00:51:54] CHAIN: WEEKLY (1W -> 4H -> 15M)
+
+[2026-04-02 00:51:59] CHAIN: INTRADAY (12H -> 1H -> 5M)
+
+======================================================================
+OVERNIGHT SCAN -- 2026-04-02 00:57:04
+Watchlist: BTC/USDT, ETH/USDT, SOL/USDT, BNB/USDT, XRP/USDT, LINK/USDT
+
+[2026-04-02 00:57:04] CHAIN: DAILY (1D -> 1H -> 5M)
+
+[2026-04-02 00:57:09] CHAIN: WEEKLY (1W -> 4H -> 15M)
+
+[2026-04-02 00:57:13] CHAIN: INTRADAY (12H -> 1H -> 5M)
