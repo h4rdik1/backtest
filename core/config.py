@@ -27,12 +27,14 @@ LIVE_WATCHLIST            = ["BTC/USDT", "ETH/USDT", "SOL/USDT", "BNB/USDT", "XR
 #   Monthly → Daily, Weekly → H4, Daily → H1, H4 → M15, H1 → M5
 # ---------------------------------------------------
 ALIGNMENTS = {
-    "daily":     {"context": "1d",  "bias": "1h",  "entry": "5m"},   # Day trading
     "weekly":    {"context": "1w",  "bias": "4h",  "entry": "15m"},  # Swing trading
-    "intraday":  {"context": "12h", "bias": "1h",  "entry": "5m"},   # Intraday scalping
+    "daily":     {"context": "1d",  "bias": "1h",  "entry": "5m"},   # Day trading
+    "intraday":  {"context": "12h", "bias": "1h",  "entry": "5m"},   # High frequency intraday
+    "scalp":     {"context": "4h",  "bias": "15m", "entry": "1m"},   # Micro-movements
+    "macro":     {"context": "1M",  "bias": "1d",  "entry": "1h"},   # Long-term institutional
 }
 
-ACTIVE_CHAIN              = "weekly"   # <<< CHANGE THIS to switch your entire alignment
+ACTIVE_CHAIN              = "daily"   # <<< Default starting chain
 
 # Derived from ACTIVE_CHAIN — used everywhere
 _chain = ALIGNMENTS[ACTIVE_CHAIN]

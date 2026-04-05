@@ -1,254 +1,130 @@
-import pandas as pd
 import os
-import models.backtest_cisd as cisd
-import core.lux_fvg as lux
-from datetime import datetime
 import time
 import argparse
+from datetime import datetime
+from core.config import LIVE_WATCHLIST, ACTIVE_CHAIN, ALIGNMENTS, chain_label, format_price
+import challenge_trader
 
-from core.analysis import log_signal, compare_live_vs_backtest, print_live_comparison, classify_regime
-from core.config import (
-    LIVE_WATCHLIST, USE_LTF_OB_ENTRY, USE_HTF_OB_CONFLUENCE, format_price,
-    FVG_WICK_RATIO, FVG_AVG_BODY_LOOKBACK, FVG_MIN_SIZE_MULT, FVG_MIN_VOLUME_MULT,
-    ACTIVE_CHAIN, ALIGNMENTS, chain_label
-)
-
-
-def scan_symbol(symbol: str, chain_name: str = None, exchange_id: str = "binance"):
+def get_signal_for_symbol(symbol: str, chain_name: str, exchange_id: str = "binance"):
     """
-    Scans a single symbol for active or pending trade setups.
-    Now prints a full [REASON] block for every signal.
+    Scans a single symbol and returns the signal if found using the main challenge_trader engine.
     """
-    chain = ALIGNMENTS.get(chain_name or ACTIVE_CHAIN)
-    tf_context = chain["context"]
-    tf_bias = chain["bias"]
-    tf_ltf = chain["entry"]
+    sig = challenge_trader.scan_for_signal(symbol, chain_name, exchange_id)
+    return sig
 
-    print(f"\n--- SCANNING {symbol} ({tf_context}/{tf_bias}/{tf_ltf}) on {exchange_id.upper()} ---")
 
-    try:
-        df_context = cisd.fetch_live_ohlcv(symbol, tf_context, 100, exchange_id)
-        df_bias_data = cisd.fetch_live_ohlcv(symbol, tf_bias, 250, exchange_id)
-        df_ltf_data = cisd.fetch_live_ohlcv(symbol, tf_ltf, 500, exchange_id)
+def print_signal(sig: dict):
+    if not sig: return
+    
+    cur = sig["current_price"]
+    ent = sig["entry_price"]
+    dire = sig["direction"]
+    sl = sig["sl_price"]
+    tp = sig["tp_price"]
 
-        if df_ltf_data.empty:
-            print(f"   [SKIP] No live data returned for {symbol} on {exchange_id}")
-            return
-    except Exception as e:
-        print(f"   [SKIP] ERROR fetching live data for {symbol} on {exchange_id}: {e}")
-        return
+    # Determine if it's PENDING or ACTIVE
+    is_active = False
+    if dire == "SHORT":
+        if cur >= ent and cur < sl:
+            is_active = True
+    else:  # LONG
+        if cur <= ent and cur > sl:
+            is_active = True
 
-    # ── Layer 1: Regime Classification ──
-    regime = "N/A"
-    if not df_context.empty and len(df_context) >= 20:
-        try:
-            regime = classify_regime(df_context, df_context.index[-1])
-        except Exception:
-            regime = "unknown"
+    print(f"\n--- ⭐ [{sig['setup_tier']}] {sig['symbol']} {dire} [{sig['chain'].upper()}] ---")
+    if sig.get('is_counter_trend'):
+        print(f"   [⚠️ WARNING] This is a COUNTER-TREND trade (Against {sig['regime'].replace('_', ' ').title()})")
+    
+    print(f"   [REASON] Top-to-Bottom Analysis:")
+    print(f"      Chain:          {chain_label(sig['chain'])}")
+    print(f"      Context Layer:  {sig['regime'].replace('_', ' ').title()} market")
+    print(f"      Bias Layer:     {sig['bias_reason'] or 'Active ' + dire}")
+    print(f"      Entry Anchor:   {sig['anchor_type']} (zone: {format_price(sig['fvg_zone_low'])} - {format_price(sig['fvg_zone_high'])})")
 
-    # ── Layer 2: Bias Detection (with reason) ──
-    bias_result = cisd.get_hourly_bias(df_bias_data)
-    bias_series = bias_result['bias']
-    bias_reasons = bias_result['bias_reason']
+    meta = sig.get('metadata', {})
+    if meta:
+        print(f"      Quality Meter:  Displacement Strength: {meta.get('displacement_strength')}x (High > 1.5)")
 
-    # Align bias to LTF
-    df_bias_data.index = pd.to_datetime(df_bias_data.index, utc=True)
-    df_ltf_data.index = pd.to_datetime(df_ltf_data.index, utc=True)
-    bias_aligned = bias_series.reindex(df_ltf_data.index, method="ffill").fillna(0)
-    reason_aligned = bias_reasons.reindex(df_ltf_data.index, method="ffill").fillna("")
-
-    # Detect FVGs and OBs
-    fvgs_ltf = lux.detect_luxalgo_fvgs(df_ltf_data.copy(),
-                                       wick_ratio=FVG_WICK_RATIO,
-                                       avg_body_lookback=FVG_AVG_BODY_LOOKBACK,
-                                       min_size_mult=FVG_MIN_SIZE_MULT,
-                                       min_volume_mult=FVG_MIN_VOLUME_MULT)
-    ltf_obs = cisd.find_order_blocks(df_ltf_data) if USE_LTF_OB_ENTRY else []
-    htf_obs = cisd.find_order_blocks(df_bias_data)
-
-    # Check latest state
-    last_idx = len(df_ltf_data) - 1
-    current_bias = bias_aligned.iloc[last_idx]
-    current_bias_reason = reason_aligned.iloc[last_idx]
-
-    if current_bias == 0:
-        print(f"   [STATE] No Bias. Waiting for {tf_bias.upper()} FVG or Liquidity Sweep.")
-        return
-
-    bias_dir = "BULLISH" if current_bias == 1 else "BEARISH"
-    bias_type = "bullish" if current_bias == 1 else "bearish"
-    print(f"   [STATE] Bias is {bias_dir}")
-
-    # ── Layer 3: Find Entry Anchor (FVG or OB) ──
-    anchor_type = None
-    latest_fvg_idx = -1
-    latest_ob_idx = -1
-    fvg_range = None
-    ob_range = None
-
-    for j in range(last_idx, max(last_idx - 30, 0), -1):
-        has_fvg = (current_bias == 1 and fvgs_ltf["fvg_bull"].iloc[j]) or (
-            current_bias == -1 and fvgs_ltf["fvg_bear"].iloc[j]
-        )
-        if has_fvg and latest_fvg_idx == -1:
-            latest_fvg_idx = j
-
-        ts = df_ltf_data.index[j]
-        has_ob = any(o['time'] == ts and o['type'] == ('bull' if current_bias == 1 else 'bear') for o in ltf_obs)
-        if has_ob and latest_ob_idx == -1:
-            latest_ob_idx = j
-
-        if latest_fvg_idx != -1 and (not USE_LTF_OB_ENTRY or latest_ob_idx != -1):
-            break
-
-    if latest_fvg_idx == -1 and latest_ob_idx == -1:
-        print(f"   [STATE] Bias exists, but no valid {tf_ltf.upper()} Entry Anchor (FVG/OB) in last 30 bars.")
-        return
-
-    # Determine anchor details
-    setup_tier = "B"
-    ltf_anchor_reason = ""
-
-    if latest_fvg_idx != -1:
-        if current_bias == 1:
-            fvg_range = (fvgs_ltf["fvg_bull_btm"].iloc[latest_fvg_idx], fvgs_ltf["fvg_bull_top"].iloc[latest_fvg_idx])
-        else:
-            fvg_range = (fvgs_ltf["fvg_bear_btm"].iloc[latest_fvg_idx], fvgs_ltf["fvg_bear_top"].iloc[latest_fvg_idx])
-        ltf_anchor_reason = f"{tf_ltf.upper()} FVG (zone: {format_price(fvg_range[0])} - {format_price(fvg_range[1])}) formed @ {df_ltf_data.index[latest_fvg_idx].strftime('%H:%M')}"
-        anchor_type = "FVG"
-
-    if latest_ob_idx != -1:
-        match = [o for o in ltf_obs if o['time'] == df_ltf_data.index[latest_ob_idx] and o['type'] == ('bull' if current_bias == 1 else 'bear')]
-        if match:
-            ob_range = (match[0]['low'], match[0]['high'])
-
-        if fvg_range and ob_range:
-            if cisd.check_confluence(fvg_range[1], fvg_range[0], ob_range[1], ob_range[0]):
-                setup_tier = "A++"
-                anchor_type = "CONFLUENCE (FVG+OB)"
-                ltf_anchor_reason += f" + OB overlap"
-            else:
-                if latest_fvg_idx >= latest_ob_idx:
-                    anchor_type = "FVG"
-                else:
-                    anchor_type = "OB"
-                    ltf_anchor_reason = f"{tf_ltf.upper()} OB (zone: {format_price(ob_range[0])} - {format_price(ob_range[1])}) formed @ {df_ltf_data.index[latest_ob_idx].strftime('%H:%M')}"
-        elif not fvg_range and ob_range:
-            anchor_type = "OB"
-            ltf_anchor_reason = f"{tf_ltf.upper()} OB (zone: {format_price(ob_range[0])} - {format_price(ob_range[1])}) formed @ {df_ltf_data.index[latest_ob_idx].strftime('%H:%M')}"
-
-    # HTF OB Confluence check
-    if setup_tier == "B" and USE_HTF_OB_CONFLUENCE:
-        target_range = fvg_range if fvg_range else ob_range
-        if target_range:
-            for o in htf_obs:
-                if not o['active']:
-                    continue
-                if cisd.check_confluence(target_range[1], target_range[0], o['high'], o['low']):
-                    setup_tier = "A"
-                    break
-
-    # Price tap detection
-    if fvg_range:
-        btm, top = fvg_range
+    if not is_active:
+        print(f"      Entry Signal:   PENDING - Waiting for price to tap entry @ {format_price(ent)}")
+        print(f"      Setup Tier:     {sig['setup_tier']}")
+        print(f"      Current Price:  {format_price(cur)}")
     else:
-        btm, top = ob_range
-
-    touched = False
-    anchor_idx = latest_fvg_idx if anchor_type in ["FVG", "CONFLUENCE (FVG+OB)"] else latest_ob_idx
-    tap_time = ""
-    for k in range(anchor_idx + 1, last_idx + 1):
-        low, high = df_ltf_data["low"].iloc[k], df_ltf_data["high"].iloc[k]
-        if (current_bias == 1 and low <= top) or (current_bias == -1 and high >= btm):
-            touched = True
-            tap_time = df_ltf_data.index[k].strftime("%H:%M")
-            break
-
-    midpoint = (top + btm) / 2
-
-    # ── Entry levels ──
-    price_now = df_ltf_data["close"].iloc[last_idx]
-    if current_bias == -1:
-        sl = top * 1.001
-        entry = midpoint
-        target = entry - (sl - entry) * 2.0
-    else:
-        sl = btm * 0.999
-        entry = midpoint
-        target = entry + (entry - sl) * 2.0
-
-    # ══════════════════════════════════════════
-    # PRINT THE FULL REASONING BLOCK
-    # ══════════════════════════════════════════
-    print(f"\n   [REASON] Top-to-Bottom Analysis:")
-    print(f"      Chain:          {chain_label(chain_name or ACTIVE_CHAIN)}")
-    print(f"      Context Layer:  {regime.replace('_', ' ').title()} market ({symbol})")
-    print(f"      Bias Layer:     {current_bias_reason or 'Active ' + bias_dir}")
-    print(f"      Entry Anchor:   {ltf_anchor_reason}")
-
-    if not touched:
-        print(f"      Entry Signal:   PENDING - Waiting for price to tap zone ({format_price(btm)} - {format_price(top)})")
-        print(f"      Setup Tier:     {setup_tier}")
-        print(f"      Current Price:  {format_price(price_now)}")
-
-        log_signal({
-            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            "symbol": symbol, "bias_type": bias_type,
-            "reason": f"HTF: {current_bias_reason} | LTF: {ltf_anchor_reason} | PENDING",
-            "fvg_top": round(top, 2), "fvg_bottom": round(btm, 2),
-            "fvg_midpoint": round(midpoint, 2),
-            "entry_price": "", "stop_price": "", "target_price": "",
-            "triggered": False, "outcome": "PENDING"
-        })
-    else:
-        print(f"      Entry Signal:   ACTIVE - Price tapped zone @ {tap_time}")
-        print(f"      Risk Layout:    Entry ~{format_price(entry)} | SL: {format_price(sl)} | TP: {format_price(target)} (2R)")
-        print(f"      Setup Tier:     {setup_tier}")
-        print(f"      Current Price:  {format_price(price_now)}")
-
-        log_signal({
-            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            "symbol": symbol, "bias_type": bias_type,
-            "reason": f"HTF: {current_bias_reason} | LTF: {ltf_anchor_reason} | Tap @ {tap_time}",
-            "fvg_top": round(top, 2), "fvg_bottom": round(btm, 2),
-            "fvg_midpoint": round(midpoint, 2),
-            "entry_price": round(entry, 2), "stop_price": round(sl, 2),
-            "target_price": round(target, 2),
-            "triggered": True, "outcome": "OPEN"
-        })
+        print(f"      Entry Signal:   ACTIVE - Price within zone")
+        print(f"      Risk Layout:    Entry ~{format_price(ent)} | SL: {format_price(sl)} | TP: {format_price(tp)} (2R)")
+        print(f"      Setup Tier:     {sig['setup_tier']}")
+        print(f"      Current Price:  {format_price(cur)}")
 
 
 def run_scanner():
     parser = argparse.ArgumentParser()
     parser.add_argument("--symbols", nargs="+", default=LIVE_WATCHLIST)
-    parser.add_argument("--chain", default=None, help="Override chain (daily/weekly/intraday)")
     parser.add_argument("--interval", type=int, default=60, help="Scan interval in seconds")
-    parser.add_argument("--compare", action="store_true", help="Compare live vs backtest")
     args = parser.parse_args()
 
-    chain_name = args.chain or ACTIVE_CHAIN
-
-    if args.compare:
-        result = compare_live_vs_backtest(backtest_wr=43.0)
-        print_live_comparison(result)
-        return
+    # The chains we want to scan (from core config)
+    chains_to_scan = list(ALIGNMENTS.keys())
 
     while True:
         os.system("cls" if os.name == "nt" else "clear")
         print("=" * 62)
-        print(f"  TTrades Live Signal Scanner - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-        print(f"  Chain: {chain_label(chain_name)} | Next scan in {args.interval}s")
+        print(f"  TTrades Omni-Scanner - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        print(f"  Scanning all chains: {', '.join(chains_to_scan).upper()}")
+        print(f"  Next scan in {args.interval}s")
         print("=" * 62)
+        print("  Scanning the market, please wait...", end="\r")
+
+        signals_found = []
 
         for sym_raw in args.symbols:
             if ":" in sym_raw:
                 sym, ex_id = sym_raw.split(":")
             else:
                 sym, ex_id = sym_raw, "binance"
-            scan_symbol(sym, chain_name, ex_id)
+                
+            for chain_name in chains_to_scan:
+                try:
+                    sig = get_signal_for_symbol(sym, chain_name, ex_id)
+                    if sig:
+                        signals_found.append(sig)
+                except Exception as e:
+                    pass
+                    
+        # Sort the signals to find the strictly best probability setups
+        # Tier A++ > A > B. For ties, prefer daily over weekly over intraday etc depending on alignment priority.
+        chain_priority = {"daily": 0, "weekly": 1, "intraday": 2}
+        tier_priority = {"A++": 0, "A": 1, "B": 2}
+        
+        signals_found.sort(
+            key=lambda s: (
+                tier_priority.get(s["setup_tier"], 9),
+                chain_priority.get(s["chain"], 9),
+            )
+        )
 
+        # Clear the "Scanning..." line
+        print("                                       \r", end="")
+
+        if not signals_found:
+            print("\n  [STATE] No valid A/B tier setups found across any timeframe right now.")
+            print("          Waiting for the next scan...")
+        else:
+            print(f"\n  Found {len(signals_found)} valid setups. Ranking by Probability (Win-Rate):")
+            
+            # De-duplicate: If the same symbol has a signal on multiple chains, just show the highest tier one
+            deduped = []
+            seen_syms = set()
+            for s in signals_found:
+                if s["symbol"] not in seen_syms:
+                    deduped.append(s)
+                    seen_syms.add(s["symbol"])
+                    
+            for sig in deduped:
+                print_signal(sig)
+
+        print("\n" + "=" * 62)
         time.sleep(args.interval)
-
 
 if __name__ == "__main__":
     run_scanner()
+

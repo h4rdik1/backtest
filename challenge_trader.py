@@ -23,6 +23,7 @@ import argparse
 import csv
 from datetime import datetime
 from typing import List, Dict, Optional
+import pandas as pd
 
 import models.backtest_cisd as cisd
 import core.lux_fvg as lux
@@ -89,30 +90,46 @@ TRADE_LOG_HEADERS = [
 # -----------------------------------------------------------
 
 
-def load_state() -> Dict:
-    if os.path.exists(STATE_FILE):
+def load_state():
+    """Load challenge data from JSON, with self-healing for missing keys."""
+    if not os.path.exists(STATE_FILE):
+        return reset_state()
+    try:
         with open(STATE_FILE, "r") as f:
             state = json.load(f)
-        # Migrate older state files that lack visited_signals
-        if "visited_signals" not in state:
-            state["visited_signals"] = []
-        return state
-    # Fresh start
-    return {
-        "balance": CHALLENGE_START,
-        "peak_balance": CHALLENGE_START,
-        "open_trades": [],
-        "pending_trades": [],
-        "closed_trades": [],
-        "visited_signals": [],  # FVG fingerprints already traded this session
-        "total_trades": 0,
-        "wins": 0,
-        "losses": 0,
-        "scan_count": 0,
-        "started_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        "status": "ACTIVE",  # ACTIVE | PASSED | STOPPED
-        "next_trade_id": 1,
-    }
+            
+            # --- SELF-HEALING: Ensure all required keys exist ---
+            defaults = {
+                "balance": CHALLENGE_START,
+                "total_trades": 0,
+                "wins": 0,
+                "losses": 0,
+                "scan_count": 0,
+                "status": "ACTIVE",
+                "closed_trades": [],
+                "open_trades": [],
+                "visited_signals": [],
+                "started_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "next_trade_id": 1,
+            }
+            fixed = False
+            for k, v in defaults.items():
+                if k not in state:
+                    state[k] = v
+                    fixed = True
+            
+            # Cleanup old key name if it exists
+            if "trades" in state and not state["closed_trades"]:
+                state["closed_trades"] = state.pop("trades")
+                fixed = True
+                
+            if fixed:
+                print("   [SYSTEM] State file self-healed (added missing keys).")
+                save_state(state)
+                
+            return state
+    except Exception:
+        return reset_state()
 
 
 def save_state(state: Dict):
@@ -122,12 +139,54 @@ def save_state(state: Dict):
 
 
 def reset_state():
-    """Wipe state and start fresh. Called if user wants a clean run."""
+    """Wipe state and start fresh, but ARCHIVE the old data first."""
+    import shutil
+    # Ensure archive folder exists
+    os.makedirs("archive", exist_ok=True)
+    
+    # Check if we have something to archive
     if os.path.exists(STATE_FILE):
-        os.remove(STATE_FILE)
-    state = load_state()
+        try:
+            # Prepare metadata from existing file
+            with open(STATE_FILE, 'r') as f:
+                old_state = json.load(f)
+                status = old_state.get('status', 'RESET')
+                ts = datetime.now().strftime("%Y%m%d_%H%M")
+                
+            # Archive state (Use copy instead of rename to avoid file lock issues)
+            arc_state = f"archive/challenge_{status}_{ts}.json"
+            shutil.copy(STATE_FILE, arc_state)
+            print(f"   [ARCHIVE] Saved state backup to {arc_state}")
+            
+            # Archive logs
+            if os.path.exists(TRADE_LOG):
+                arc_log = f"archive/challenge_{status}_{ts}.csv"
+                try:
+                    shutil.copy(TRADE_LOG, arc_log)
+                    os.remove(TRADE_LOG)
+                    print(f"   [ARCHIVE] Moved logs to {arc_log}")
+                except Exception as e:
+                    print(f"   [WARN] Could not move logs (locked): {e}")
+
+        except Exception as e:
+             print(f"   [WARN] Archive failed: {e}")
+
+    # Fresh Start - Ensure ALL expected keys for current dashboard are present
+    state = {
+        "balance": CHALLENGE_START,
+        "total_trades": 0,
+        "wins": 0,
+        "losses": 0,
+        "scan_count": 0,
+        "started_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "status": "ACTIVE",
+        "next_trade_id": 1,
+        "closed_trades": [],       # History of closed trades
+        "open_trades": [],         # Active positions
+        "visited_signals": [],     # Deduplication memory
+    }
     save_state(state)
-    event(state, "RESET", "Challenge state reset. Starting fresh $5,000.")
+    event(state, "RESET", f"Challenge reset to ${CHALLENGE_START:.2f}")
     return state
 
 
@@ -234,8 +293,6 @@ def scan_for_signal(
 
     if df_ltf_df.empty or df_bias_df.empty:
         return None
-
-    import pandas as pd
 
     # Regime
     regime = "ranging"
@@ -355,10 +412,9 @@ def scan_for_signal(
         sl = top * 1.001
         tp = entry - (sl - entry) * 2.0
 
-    # Unique fingerprint for this specific FVG zone.
-    # Rounded to 2 dp so minor float drift doesn't create fake-new signals.
-    # We omit chain_name here so that if the same FVG exists across daily/intraday, it's only traded once.
-    signal_key = f"{symbol}|{round(btm, 2)}|{round(top, 2)}"
+    # Unique fingerprint for this specific FVG zone + timeframe chain.
+    # This allow taking the same zone on Daily and Scalp, but blocks duplicates on the same TF.
+    signal_key = f"{chain_name}|{symbol}|{round(btm, 1)}|{round(top, 1)}"
 
     return {
         "symbol": symbol,
@@ -376,6 +432,22 @@ def scan_for_signal(
         "bias_reason": bias_reason,
         "exchange_id": exchange_id,
         "signal_key": signal_key,
+        "is_counter_trend": (bias_dir == 1 and regime == "trending_down") or (bias_dir == -1 and regime == "trending_up"),
+        "metadata": get_market_metadata(df_ltf_df) # Training context/Quality meter
+    }
+
+def get_market_metadata(df: pd.DataFrame) -> Dict:
+    """SMC-native quality data for later training."""
+    if len(df) < 20: return {}
+    
+    # Displacement Strength (Avg body size of last 3 bars vs previous 10)
+    bodies = (df['close'] - df['open']).abs()
+    avg_recent = bodies.tail(3).mean()
+    avg_hist = bodies.tail(13).head(10).mean()
+    displacement_mult = round(avg_recent / avg_hist, 2) if avg_hist > 0 else 1.0
+    
+    return {
+        "displacement_strength": displacement_mult,
     }
 
 
