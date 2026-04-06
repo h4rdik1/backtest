@@ -14,7 +14,8 @@ from core.config import (
     USE_FVG_QUALITY, USE_HTF_OB_CONFLUENCE, USE_PREMIUM_DISCOUNT,
     USE_PULLBACK_FILTER, USE_AUTO_BREAKEVEN, USE_LTF_OB_ENTRY,
     TEST_START, DATA_DIR,
-    TF_CONTEXT, TF_BIAS, TF_ENTRY, ACTIVE_CHAIN, chain_label
+    TF_CONTEXT, TF_BIAS, TF_ENTRY, ACTIVE_CHAIN, chain_label,
+    PROTECTED_SWING_LOOKBACK, PROTECTED_SWING_BUFFER
 )
 
 from core.analysis import (
@@ -162,6 +163,63 @@ def find_order_blocks(df: pd.DataFrame) -> List[Dict]:
                                 "type": "bear"
                             })
     return obs
+
+
+# ══════════════════════════════════════════════════════════════
+# PROTECTED SWING SL
+# ══════════════════════════════════════════════════════════════
+
+def find_protected_swing(df: pd.DataFrame, bar_idx: int, is_long: bool,
+                         lookback: int = PROTECTED_SWING_LOOKBACK,
+                         buffer: float = PROTECTED_SWING_BUFFER):
+    """
+    Walks back from bar_idx to find the most recent STRUCTURAL swing
+    low (for longs) or swing high (for shorts) that acts as a protection
+    level for the stop loss.
+
+    A swing low  = bar[i].low  < bar[i-1].low  AND bar[i].low  < bar[i+1].low
+    A swing high = bar[i].high > bar[i-1].high AND bar[i].high > bar[i+1].high
+
+    WHY: Placing SL just below the FVG boundary is too tight — normal
+    price noise will wick through it.  A protected swing is a confirmed
+    structural level that price already RESPECTED, so SL beyond it means
+    the setup is genuinely invalidated before we're stopped out.
+
+    Returns: SL price (float) or None if no swing found in the window.
+    """
+    # Need at least 2 bars on each side of a candidate bar
+    search_start = max(1, bar_idx - lookback)
+    search_end   = bar_idx - 1  # don't include the current entry bar
+
+    if is_long:
+        best_swing = None
+        # Walk backwards — we want the MOST RECENT swing low
+        for i in range(search_end, search_start - 1, -1):
+            if i < 1 or i >= len(df) - 1:
+                continue
+            lo   = df['low'].iloc[i]
+            lo_l = df['low'].iloc[i - 1]
+            lo_r = df['low'].iloc[i + 1]
+            if lo < lo_l and lo < lo_r:
+                best_swing = lo
+                break  # most recent wins
+        if best_swing is not None:
+            return best_swing * (1.0 - buffer)   # SL just below the swing
+    else:
+        best_swing = None
+        for i in range(search_end, search_start - 1, -1):
+            if i < 1 or i >= len(df) - 1:
+                continue
+            hi   = df['high'].iloc[i]
+            hi_l = df['high'].iloc[i - 1]
+            hi_r = df['high'].iloc[i + 1]
+            if hi > hi_l and hi > hi_r:
+                best_swing = hi
+                break
+        if best_swing is not None:
+            return best_swing * (1.0 + buffer)   # SL just above the swing
+
+    return None  # caller will use fallback
 
 
 def check_confluence(fvg_top, fvg_btm, ob_high, ob_low) -> bool:
@@ -541,22 +599,35 @@ def simulate_trades(df_ltf: pd.DataFrame, df_bias: pd.DataFrame,
         funnel["Premium/Discount"] += 1
 
         # ── Calculate entry, stop, target ──
-        entry = row['close']
+        entry    = row['close']
         fvg_size = abs(fvg_top - fvg_btm)
 
+        # --- Protected Swing SL ---
+        # Try to anchor SL below the last structural swing low/high.
+        # This gives the trade room to breathe versus the FVG-boundary SL.
+        swing_sl = find_protected_swing(df_ltf, i, is_bull)
+
         if is_bull:
-            stop = fvg_btm - (fvg_size * 0.2)
-            risk = entry - stop
+            if swing_sl is not None and swing_sl < fvg_btm:
+                # Structural swing is below the FVG bottom — great protection
+                stop = swing_sl
+            else:
+                # No qualifying swing found, fall back: 1% below FVG bottom
+                stop = fvg_btm * 0.999
+            risk   = entry - stop
             target = entry + (risk * RISK_REWARD)
         else:
-            stop = fvg_top + (fvg_size * 0.2)
-            risk = stop - entry
+            if swing_sl is not None and swing_sl > fvg_top:
+                stop = swing_sl
+            else:
+                stop = fvg_top * 1.001
+            risk   = stop - entry
             target = entry - (risk * RISK_REWARD)
 
         # ── Validate risk ──
         if risk <= 0:
             continue
-        if risk / entry > 0.03:
+        if risk / entry > 0.03:   # cap: never risk more than 3% from entry
             continue
         funnel["Valid SL"] += 1
 

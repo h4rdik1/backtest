@@ -83,6 +83,15 @@ USE_LTF_OB_ENTRY          = True      # Enable LTF Order Block entries
 OB_MOVE_MULT              = 1.2       # Impulse 1.2x avg range
 OB_SWING_LOOKBACK         = 5         # Bars to look for swing point
 
+# ── PROTECTED SWING SL ──────────────────────────────
+# Instead of placing SL just below the FVG boundary (too tight),
+# the engine walks back up to N bars to find the last STRUCTURAL
+# swing low (for longs) or swing high (for shorts) and places the
+# SL just beyond it.  This gives the trade room to breathe without
+# widening risk arbitrarily.
+PROTECTED_SWING_LOOKBACK  = 20        # bars to look back for swing high/low
+PROTECTED_SWING_BUFFER    = 0.001     # 0.1% clearance beyond the swing point
+
 # ── CISD ───────────────────────────────────────────
 CISD_BODY_MULT            = 0.3       # 30% of avg range
 

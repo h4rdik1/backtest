@@ -26,6 +26,7 @@ from typing import List, Dict, Optional
 import pandas as pd
 
 import models.backtest_cisd as cisd
+from models.backtest_cisd import find_protected_swing
 import core.lux_fvg as lux
 
 from core.config import (
@@ -400,16 +401,29 @@ def scan_for_signal(
                 break
 
     # Entry levels  (entry at midpoint of zone)
-    midpoint = (top + btm) / 2
+    midpoint  = (top + btm) / 2
     price_now = df_ltf_df["close"].iloc[last_idx]
 
     if bias_dir == 1:  # LONG
         entry = midpoint
-        sl = btm * 0.999
+        # Try structural swing SL first
+        swing_sl = find_protected_swing(df_ltf_df, last_idx, is_long=True)
+        if swing_sl is not None and swing_sl < btm:
+            sl      = swing_sl
+            sl_type = "protected_swing"
+        else:
+            sl      = btm * 0.999   # fallback: 0.1% below FVG bottom
+            sl_type = "fvg_boundary"
         tp = entry + (entry - sl) * 2.0
     else:  # SHORT
         entry = midpoint
-        sl = top * 1.001
+        swing_sl = find_protected_swing(df_ltf_df, last_idx, is_long=False)
+        if swing_sl is not None and swing_sl > top:
+            sl      = swing_sl
+            sl_type = "protected_swing"
+        else:
+            sl      = top * 1.001   # fallback: 0.1% above FVG top
+            sl_type = "fvg_boundary"
         tp = entry - (sl - entry) * 2.0
 
     # Unique fingerprint for this specific FVG zone + timeframe chain.
@@ -423,6 +437,7 @@ def scan_for_signal(
         "entry_price": round(entry, 8),
         "sl_price": round(sl, 8),
         "tp_price": round(tp, 8),
+        "sl_type": sl_type,             # "protected_swing" or "fvg_boundary"
         "current_price": round(price_now, 8),
         "fvg_zone_low": round(btm, 8),
         "fvg_zone_high": round(top, 8),

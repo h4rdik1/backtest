@@ -45,13 +45,22 @@ def print_signal(sig: dict):
     if meta:
         print(f"      Quality Meter:  Displacement Strength: {meta.get('displacement_strength')}x (High > 1.5)")
 
+    # SL anchor label — tells you if SL has structural backing or is just FVG edge
+    sl_type = sig.get('sl_type', 'fvg_boundary')
+    if sl_type == 'protected_swing':
+        sl_label = "🛡️  Protected Swing"
+    else:
+        sl_label = "⚠️  FVG Boundary (fallback — no swing found)"
+
     if not is_active:
         print(f"      Entry Signal:   PENDING - Waiting for price to tap entry @ {format_price(ent)}")
+        print(f"      SL Anchor:      {sl_label} @ {format_price(sl)}")
         print(f"      Setup Tier:     {sig['setup_tier']}")
         print(f"      Current Price:  {format_price(cur)}")
     else:
         print(f"      Entry Signal:   ACTIVE - Price within zone")
         print(f"      Risk Layout:    Entry ~{format_price(ent)} | SL: {format_price(sl)} | TP: {format_price(tp)} (2R)")
+        print(f"      SL Anchor:      {sl_label}")
         print(f"      Setup Tier:     {sig['setup_tier']}")
         print(f"      Current Price:  {format_price(cur)}")
 
