@@ -1,4 +1,4 @@
-# Python
+# Python Environment
 __pycache__/
 *.pyc
 *.pyo
@@ -7,28 +7,38 @@ __pycache__/
 env/
 venv/
 .venv/
-pip-log.txt
-pip-delete-this-directory.txt
-.tox/
-.coverage
 .cache
-nosetests.xml
-coverage.xml
-*.cover
-.hypothesis/
+.pytest_cache/
 
-# Data & Logs (Do not upload local trade history or candle cache)
-prev_candles/
+# Core Data & State (Local Only)
+# We ignore these so new users start with a fresh state and no local clutter
+data/
+exports/
+archive/
+history/
+trades/
 *.csv
-*.xlsx
-trade_log_*.csv
+*.json
+!requirements.txt
+!package.json
 
-# IDEs
+# Logs
+pip-log.txt
+*.log
+
+# IDEs & System
 .vscode/
 .idea/
 .project
 .pydevproject
-
-# System
 .DS_Store
 Thumbs.db
+desktop.ini
+
+# Deployment / Testing
+.tox/
+.coverage
+coverage.xml
+nosetests.xml
+*.cover
+.hypothesis/
