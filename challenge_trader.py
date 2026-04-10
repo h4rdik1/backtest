@@ -21,7 +21,7 @@ import json
 import time
 import argparse
 import csv
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import List, Dict, Optional
 import pandas as pd
 
@@ -41,6 +41,10 @@ from core.config import (
     USE_LTF_OB_ENTRY,
     USE_HTF_OB_CONFLUENCE,
     format_price,
+    MIN_DISPLACEMENT_STRENGTH,
+    MIN_SETUP_TIER,
+    MAX_TRADES_PER_DAY,
+    RETIRED_ALIGNMENTS,
 )
 from core.analysis import classify_regime, log_signal
 
@@ -137,6 +141,7 @@ def save_state(state: Dict):
     os.makedirs("exports", exist_ok=True)
     with open(STATE_FILE, "w") as f:
         json.dump(state, f, indent=2)
+
 
 
 def reset_state():
@@ -525,7 +530,17 @@ def check_and_close_trades(state: Dict):
     still_open = []
     for trade in state["open_trades"]:
         sym = trade["symbol"]
-        chain = ALIGNMENTS[trade["chain"]]
+        
+        # Safe chain lookup (check active first, then retired)
+        chain_name = trade["chain"]
+        all_alignments = {**ALIGNMENTS, **RETIRED_ALIGNMENTS}
+        
+        if chain_name not in all_alignments:
+            event(state, "WARN", f"Unknown chain '{chain_name}' for {sym} [{trade['trade_id']}]. Using daily as fallback.")
+            chain = ALIGNMENTS["daily"]
+        else:
+            chain = all_alignments[chain_name]
+            
         tf_ltf = chain["entry"]
         ex_id = trade.get("exchange_id", "binance")
 
@@ -720,12 +735,11 @@ def run_scan(state: Dict, chains_to_scan: List[str]):
     """One full scan: close open trades, then hunt for new entries."""
     state["scan_count"] += 1
 
-    # 0. Check pending trades to see if they filled or expired
+    # 1. ALWAYS Manage existing positions first! (Even if cap is hit)
     if state.get("pending_trades"):
         event(state, "CHECK", f"Checking {len(state['pending_trades'])} pending trade(s)...")
         check_pending_trades(state)
 
-    # 1. Check / close existing open trades first
     if state["open_trades"]:
         event(state, "CHECK", f"Checking {len(state['open_trades'])} open trade(s)...")
         check_and_close_trades(state)
@@ -734,6 +748,20 @@ def run_scan(state: Dict, chains_to_scan: List[str]):
     state["status"] = check_challenge_status(state)
     save_state(state)
     if state["status"] != "ACTIVE":
+        return
+
+    # ── Daily trade cap ————————————————————————————————
+    # (Only prevents STARTING new trades or processing new signals)
+    today_str = datetime.now().strftime("%Y-%m-%d")
+    trades_today = sum(
+        1 for t in state.get("closed_trades", []) + state.get("open_trades", [])
+        if t.get("opened_at", "").startswith(today_str)
+    ) + sum(
+        1 for t in state.get("pending_trades", [])
+        if t.get("expires_at", "")[:10] == today_str
+    )
+    if trades_today >= MAX_TRADES_PER_DAY:
+        event(state, "SCAN", f"Daily trade cap hit ({trades_today}/{MAX_TRADES_PER_DAY}). Waiting for tomorrow.")
         return
 
     # 3. Can we open more trades?
@@ -762,6 +790,20 @@ def run_scan(state: Dict, chains_to_scan: List[str]):
             try:
                 sig = scan_for_signal(sym, chain_name, ex_id)
                 if sig:
+                    # ── QUALITY GATE 1: Minimum Setup Tier ──
+                    tier_rank = {"A++": 0, "A": 1, "B": 2}
+                    min_rank  = {"A++": 0, "A": 1, "B": 2}.get(MIN_SETUP_TIER, 1)
+                    sig_rank  = tier_rank.get(sig.get("setup_tier", "B"), 2)
+                    if sig_rank > min_rank:
+                        print(f"SKIP (tier {sig['setup_tier']} below minimum {MIN_SETUP_TIER})")
+                        continue
+
+                    # ── QUALITY GATE 2: Displacement Strength ──
+                    disp = sig.get("metadata", {}).get("displacement_strength", 0)
+                    if disp < MIN_DISPLACEMENT_STRENGTH:
+                        print(f"SKIP (displacement {disp:.2f}x below {MIN_DISPLACEMENT_STRENGTH}x)")
+                        continue
+
                     # Skip this FVG if we already traded it this session
                     if sig["signal_key"] in state.get("visited_signals", []):
                         print(f"SKIP (already traded this FVG zone)")
@@ -771,7 +813,6 @@ def run_scan(state: Dict, chains_to_scan: List[str]):
                         dire = sig["direction"]
                         sl   = sig["sl_price"]
                         
-                        from datetime import datetime, timedelta
                         sig["expires_at"] = (datetime.now() + timedelta(hours=8)).strftime("%Y-%m-%d %H:%M:%S")
 
                         is_active = False

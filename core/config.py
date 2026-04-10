@@ -9,16 +9,15 @@
 SETUP                     = "daily"
 
 # ── CURATED WATCHLIST (April 2026) ─────────────────
-# Selected for: liquidity, clean SMC structure, institutional OB activity
-# BTC  - market anchor, cleanest HTF structure
-# ETH  - best FVG reactions, follows BTC with lag = entries
-# SOL  - highest volatility in top-10, great intraday setups
-# BNB  - cleaner OB structure, less noisy retail action
-# XRP  - strong liquidity sweeps, perfect CISD setups
-# LINK - most institutional of altcoins, textbook OBs
-SYMBOLS                   = ["BTC/USDT", "ETH/USDT", "SOL/USDT", "BNB/USDT", "XRP/USDT", "LINK/USDT"]
+# UPDATED based on challenge analysis (Apr-09):
+# BNB  - 63.6% WR, best performer across all challenges
+# ETH  - 42.9% WR, consistent reactions, follows BTC with lag
+# BTC  - kept for structure/context only, not primary trade vehicle
+# SOL  - borderline, kept for now
+# REMOVED: XRP (22% WR), LINK (28% WR) — statistically unprofitable
+SYMBOLS                   = ["BTC/USDT", "ETH/USDT", "SOL/USDT", "BNB/USDT"]
 EXCHANGE                  = "binance"
-LIVE_WATCHLIST            = ["BTC/USDT", "ETH/USDT", "SOL/USDT", "BNB/USDT", "XRP/USDT", "LINK/USDT"]
+LIVE_WATCHLIST            = ["BTC/USDT", "ETH/USDT", "SOL/USDT", "BNB/USDT"]
 
 # ---------------------------------------------------
 # TIMEFRAME ALIGNMENT CHAINS
@@ -27,11 +26,19 @@ LIVE_WATCHLIST            = ["BTC/USDT", "ETH/USDT", "SOL/USDT", "BNB/USDT", "XR
 #   Monthly → Daily, Weekly → H4, Daily → H1, H4 → M15, H1 → M5
 # ---------------------------------------------------
 ALIGNMENTS = {
-    "weekly":    {"context": "1w",  "bias": "4h",  "entry": "15m"},  # Swing trading
-    "daily":     {"context": "1d",  "bias": "1h",  "entry": "5m"},   # Day trading
-    "intraday":  {"context": "12h", "bias": "1h",  "entry": "5m"},   # High frequency intraday
-    "scalp":     {"context": "4h",  "bias": "15m", "entry": "1m"},   # Micro-movements
-    "macro":     {"context": "1M",  "bias": "1d",  "entry": "1h"},   # Long-term institutional
+    "weekly":    {"context": "1w",  "bias": "4h",  "entry": "15m"},  # Swing trading    — keep (46% WR, 1.71 PF)
+    "daily":     {"context": "1d",  "bias": "1h",  "entry": "5m"},   # Day trading      — keep (42% WR, 1.47 PF)
+    # DISABLED based on challenge analysis (Apr-09):
+    # "intraday":  33% WR, 1.00 PF — break-even at best
+    # "scalp":     39% WR but 50% of all trades — volume killer, no edge
+    # "macro":     0% WR, 3 trades all lost — remove
+}
+
+# ── RETIRED ALIGNMENTS (for position management of existing trades) ──
+RETIRED_ALIGNMENTS = {
+    "intraday":  {"context": "4h",  "bias": "15m", "entry": "5m"},
+    "scalp":     {"context": "1h",  "bias": "5m",  "entry": "1m"},
+    "macro":     {"context": "1M",  "bias": "1d",  "entry": "4h"},
 }
 
 ACTIVE_CHAIN              = "daily"   # <<< Default starting chain
@@ -73,10 +80,10 @@ BIAS_EXPIRY_BARS          = 24        # Bias stays active for 24 bars on the bia
 
 # ── FILTERS (toggle individually for analysis) ─────
 USE_FVG_QUALITY           = True      # FVG first-touch only
-USE_HTF_OB_CONFLUENCE     = False     # Require price near HTF OB
-USE_PREMIUM_DISCOUNT      = False     # Only buy in discount, sell in premium
+USE_HTF_OB_CONFLUENCE     = True      # Require price near HTF OB  [ENABLED — analysis shows +quality]
+USE_PREMIUM_DISCOUNT      = True      # Only buy in discount, sell in premium [ENABLED — kills counter-trend]
 USE_PULLBACK_FILTER       = False     # Require pullback candle before entry
-USE_AUTO_BREAKEVEN        = False     # Move SL to entry after N-R
+USE_AUTO_BREAKEVEN        = True      # Move SL to entry at 1.8R  [ENABLED — protect profits]
 USE_LTF_OB_ENTRY          = True      # Enable LTF Order Block entries
 
 # ── HTF OB ─────────────────────────────────────────
@@ -104,6 +111,12 @@ MIN_TRADES_FOR_VALIDITY   = 100
 CONSISTENCY_PASS_PCT      = 0.55
 EDGE_REAL_THRESHOLD       = 0.65
 WALK_FORWARD_TOLERANCE    = 0.20
+
+# ── CHALLENGE QUALITY GATES (added Apr-09 post-mortem) ──
+# Based on analysis: B-tier signals had 29.6% WR, weak displacement
+MIN_DISPLACEMENT_STRENGTH = 1.2      # Require explosive move (avg body 1.2x recent baseline)
+MIN_SETUP_TIER            = "A"      # Only trade A or A++ setups — no more B-Tier
+MAX_TRADES_PER_DAY        = 4        # Hard cap: max 4 new trades per calendar day
 
 # ── UTILITIES ──────────────────────────────────────
 def format_price(p):
