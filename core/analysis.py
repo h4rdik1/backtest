@@ -494,7 +494,7 @@ def print_filter_contribution(results: List[Dict]):
 # PRIORITY 7 — Live Scanner Signal Logging
 # ══════════════════════════════════════════════════════════════
 
-SIGNAL_LOG_FILE = "exports/signal_log.csv"
+SIGNAL_LOG_FILE = "signal_log.csv"
 SIGNAL_LOG_HEADERS = [
     "timestamp", "symbol", "bias_type", "reason", "fvg_top", "fvg_bottom",
     "fvg_midpoint", "entry_price", "stop_price", "target_price",
