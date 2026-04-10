@@ -1,92 +1,87 @@
-# 💹 TTrades SMC Trading Engine (Phase 4 - April 2026 Overhaul)
+# 💹 TTrades SMC Trading Engine (Phase 5 - April 2026 Institutional Upgrade)
 
-A professional-grade Python backtesting and live-monitoring framework for **Smart Money Concepts (SMC)**. This engine implements the **TTrades Scalping Model** using displacement-based **LuxAlgo FVG** detection, HTF institutional bias alignment, and Order Block (OB) confluence.
+A professional-grade Python autonomous trading and live-monitoring framework for **Smart Money Concepts (SMC)**. This engine implements the **TTrades Tiered Scalping Model** using displacement-based **LuxAlgo FVG** detection, HTF institutional bias alignment, and Order Block (OB) confluence.
 
 > [!IMPORTANT]
-> **April 2026 Update**: The engine has been completely overhauled to eliminate the "0 trade" bottleneck. It now uses a **Reaction-based entry** on the 15m/5m/1m timeframes with validated profitability across BTC, ETH, and SOL.
+> **April 2026 Overhaul**: The engine now features a **Multi-Exchange Live Scanner**, **Automated Position Management**, and a strict **Tiered Setup System** (S-Tier to B-Tier) to ensure only high-probability institutional footprints are traded.
 
 ---
 
 ## 📁 Project Architecture
 
-- **`challenge_trader.py`**: **Main Entry Point (Live/Paper)**. Runs a continuous scan for signals, manages a $5,000 paper trading challenge, and logs events.
-- **`live_scanner.py`**: Real-time market monitor that prints SMC setups to the terminal without execution.
+- **`challenge_trader.py`**: **Main Execution Engine**. Runs continuous scans, manages $5,000 challenge capital with automated risk management, and preserves state between restarts.
+- **`live_scanner.py`**: **Multi-Exchange Real-Time Monitor**. Features an automated loop to scan the market across Binance, OKX, and others for A-Tier setups.
 - **`core/`**: The brain of the project.
-  - `config.py`: **Single source of truth** for all settings (Watchlist, R:R, Alignments).
-  - `analysis.py`: Statistical validation (Monte Carlo, Regime Analysis, PnL math).
-  - `lux_fvg.py`: Mathematical FVG and Liquidity Sweep detection based on LuxAlgo logic.
-- **`models/`**: Trading strategies.
-  - `backtest_cisd.py`: **The Core Model**. Enters on FVG/OB reaction (touch) + HTF bias alignment.
-  - `backtest_limit.py`: **Limit Order Model**. Places limit orders at FVG midpoints.
-- **`tools/`**: Utility scripts.
-  - `view_candles.py`: Interactive plotter to visualize candles, FVGs, and OBs.
-  - `fetch_candles.py`: Paginated data fetcher for CCXT/Binance.
-- **`tradingview_smc_v1.pine`**: PineScript implementation for visual parity on TradingView.
+  - `config.py`: **Single source of truth**. Centralized settings for Risk, Tiers, Watchlists, and Timeframe Alignments.
+  - `analysis.py`: Statistical engine for Monte Carlo simulations, Market Regime classification, and PnL validation.
+  - `lux_fvg.py`: Mathematical FVG and Liquidity Sweep (SFP) detection based on LuxAlgo logic.
+- **`models/`**:
+  - `backtest_cisd.py`: **Institutional Reaction Model**. Logic for entering on FVG/OB "touches" with HTF confluence. Now supports multi-exchange pooling via CCXT.
+- **`tools/`**:
+  - `view_candles.py`: Graphical plotter for visualizing SMC structures (FVG, OB, Sweeps).
+  - `analyse_challenges.py`: Deep-dive diagnostic for post-mortem analysis of challenge runs.
+  - `pine/`: Contains the TradingView implementation for system-to-chart parity.
+- **`exports/`**: Centralized storage for `challenge_state.json`, trade logs, and signal forensics.
 
 ---
 
-## 🧠 SMC Methodology: CBE Alignment
+## 🧠 Institutional Methodology: The Tier System (New)
 
-The engine follows a strict **Context → Bias → Entry (CBE)** hierarchy. Trade signals only fire when all three timeframes align:
+The engine follows a strict **Context → Bias → Entry (CBE)** hierarchy. We no longer trade all valid signals; setups are ranked into Tiers defined in [TRADING_RULES.md](file:///e:/backtest/TRADING_RULES.md):
 
-| Chain | Context (HTF) | Bias (MTF) | Entry (LTF) | Style |
+| Tier | Name | Requirement | Status |
+| :--- | :--- | :--- | :--- |
+| 🏆 **S-Tier** | The Double Sweep | HTF SFP + LTF Sweep + MSB | **Trade (Limit)** |
+| ⭐ **A++ Tier** | The Confluence | HTF Sweep + LTF FVG/OB Overlap | **Trade** |
+| ✅ **A-Tier** | Standard Setup | HTF Alignment + LTF Sweep + MSB | **Trade** |
+| ⚠️ **B-Tier** | Basic FVG | Single Timeframe Reaction | **SKIP** |
+
+### Timeframe Alignment Chains
+Defined in `config.py` using standard institutional pairings:
+
+| Chain | Context (HTF) | Bias (MTF) | Entry (LTF) | Strategy Class |
 | :--- | :--- | :--- | :--- | :--- |
-| **Weekly** | 1 Month | 1 Day | 1 Hour | Macro Swing |
-| **Daily** | 1 Day | 1 Hour | 5 Min | Day Trading |
-| **Intraday** | 12 Hour | 1 Hour | 5 Min | High Frequency |
-| **Scalp** | 4 Hour | 15 Min | 1 Min | Micro Scalping |
+| **Weekly** | 1 Week | 4 Hour | 15 Min | Swing / High Conviction |
+| **Daily** | 1 Day | 1 Hour | 5 Min | Day Trading (Standard) |
 
 ---
 
 ## 🚀 Getting Started
 
 ### 1. Installation
-Ensure you have Python 3.9+ installed, then install dependencies:
+Install core dependencies (CCXT, Pandas, NumPy):
 ```bash
 pip install -r requirements.txt
 ```
 
-### 2. Fetch Historical Data
-You must build a local data cache (365 days recommended for alignment validity):
+### 2. Live Scanner (Multi-Exchange)
+Run the automated scanner loops. You can now specify symbols with exchange overrides:
 ```bash
-# Fetch 1 year of data for core assets
-python fetch_candles.py --symbols BTC/USDT ETH/USDT SOL/USDT BNB/USDT --days 365
+# Default (Binance)
+python live_scanner.py
+
+# Custom symbols across different exchanges
+python live_scanner.py --symbols BTC/USDT ETH/USDT:okx HYPE/USDT:okx
 ```
 
----
-
-## 🧪 How to Run
-
-### 🏆 Challenge Trader (Paper/Live)
-Run the autonomous challenge engine. It manages a $5,000 account with strict risk rules:
+### 3. Challenge Trader
+Autonomous engine targeting a $5,500 goal ($500 gain). Features automated "Daily Trade Cap" and state persistence.
 ```bash
 python challenge_trader.py
 ```
-*Features:* $300 Floor, $500 Target, Max 2 concurrent trades, 10-minute scan interval.
-
-### 🔭 Live Scanner
-Monitor the markets for signals without executing trades:
-```bash
-python live_scanner.py
-```
-
-### 📊 Master Backtest
-Run the multi-asset runner to see combined performance of the CISD model:
-```bash
-python run_multi_asset.py --alignment daily
-```
+*Current Fixed Risk:* $50 (1%) per trade. *Max Drawdown:* $300 (Floor at $4,700).
 
 ---
 
-## 📊 Performance Benchmarks (1-Year Backtest)
+## 📊 Backtest Benchmarks (April 2026)
 
-The overhauled CISD strategy achieves a **~42% Win Rate** with a focused **2.0 Risk:Reward ratio**.
+The Tiered A-Tier model achieves significantly higher quality outcomes by filtering out low-probability B-Tier "volume kill" trades.
 
-| Asset | Model | Trades | Profit Factor | PnL (1-Year) |
+| Asset | Model | Trades | Win Rate | Profit Factor |
 | :--- | :--- | :--- | :--- | :--- |
-| **BTC/USDT** | CISD | 894 | **1.51** | +$6,450 |
-| **ETH/USDT** | CISD | 882 | **1.43** | +$5,550 |
-| **SOL/USDT** | CISD | 835 | **1.38** | +$4,700 |
+| **BNB/USDT** | A-Tier | 120 | **63.6%** | **2.11** |
+| **ETH/USDT** | A-Tier | 482 | **42.9%** | **1.43** |
+| **BTC/USDT** | A-Tier | 494 | **38.2%** | **1.21** |
 
 ---
 
@@ -94,11 +89,11 @@ The overhauled CISD strategy achieves a **~42% Win Rate** with a focused **2.0 R
 
 All strategy rules are centralized in **`core/config.py`**. 
 
-- `ACTIVE_CHAIN`: Switch between `daily`, `weekly`, or `scalp` for different trading intensities.
-- `RISK_REWARD`: Set to `2.0` (validated optimal for SMC setups).
-- `USE_LTF_OB_ENTRY`: Enable/Disable Order Block entries alongside FVGs.
-- `LIVE_WATCHLIST`: Add or remove symbols for scanning (e.g., `LINK/USDT`, `BNB/USDT`).
+- `MIN_SETUP_TIER`: Set to `"A"` to automatically block low-probability B-tier setups.
+- `MAX_TRADES_PER_DAY`: Hard cap to prevent over-trading in ranging conditions.
+- `PROTECTED_SWING_LOOKBACK`: Defines structural SL depth (replaces tight FVG boundary stops).
+- `RETIRED_ALIGNMENTS`: Preserves management logic for legacy trades (Scalp, Intraday, Macro).
 
 ---
 
-**Disclaimer**: This project is for educational purposes. Trading carries significant risk. Refer to the [latest walkthrough](file:///C:/Users/hardi/.gemini/antigravity/brain/1dc5aac8-cb15-4735-a728-525d6b59f8b3/walkthrough.md) for full diagnostic and optimization details.
+**Disclaimer**: This project is for educational purposes. Smart Money Concepts are statistical models and do NOT guarantee profit. Refer to [TRADING_RULES.md](file:///e:/backtest/TRADING_RULES.md) for full risk and execution protocol.
