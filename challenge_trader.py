@@ -21,12 +21,12 @@ import json
 import time
 import argparse
 import csv
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import List, Dict, Optional
 import pandas as pd
 
 import models.backtest_cisd as cisd
-from models.backtest_cisd import find_protected_swing
+from models.backtest_cisd import find_protected_swing, find_latest_sfp, detect_sfp_pattern
 import core.lux_fvg as lux
 
 from core.config import (
@@ -40,24 +40,48 @@ from core.config import (
     FVG_MIN_VOLUME_MULT,
     USE_LTF_OB_ENTRY,
     USE_HTF_OB_CONFLUENCE,
+    USE_PREMIUM_DISCOUNT,
     format_price,
     MIN_DISPLACEMENT_STRENGTH,
     MIN_SETUP_TIER,
+    SKIP_RANGING_REGIME,
+    SKIP_COUNTER_TREND,
     MAX_TRADES_PER_DAY,
     RETIRED_ALIGNMENTS,
+    RISK_REWARD,
+    MIN_SL_PCT_BTC,
+    MIN_SL_PCT_ALTS,
+    MAX_STOP_DISTANCE,
+    # Task 3 — Sessions
+    SESSIONS, SESSION_MIN_TIER,
+    # Task 4 — Break-even & trailing
+    BE_TRIGGER_R, PARTIAL_EXIT_R, PARTIAL_EXIT_PCT,
+    # Task 5 — Correlation
+    CORRELATION_GROUPS,
+    # Task 6 — Scoring / sizing
+    SCORE_THRESHOLDS, BASE_RISK_USDT,
+    # Task 8 — Drawdown halt
+    TRAILING_HALT_PCT, MAX_WEEKLY_LOSS_PCT,
+    # Task 9 — Time invalidation
+    MAX_TRADE_DURATION,
+    # Task 10 — Live vs backtest
+    LIVE_BACKTEST_CHECK_N,
+    # Health check
+    run_system_health_check,
+    ACCOUNT_SIZE,
 )
-from core.analysis import classify_regime, log_signal
+from core.analysis import classify_regime, log_signal, get_current_session, compare_live_to_backtest
 
 # -----------------------------------------------------------
 # CHALLENGE PARAMETERS
 # -----------------------------------------------------------
-CHALLENGE_START = 5000.00
-CHALLENGE_FLOOR = 4700.00  # stop trading if balance drops here
+CHALLENGE_START  = 5000.00
+CHALLENGE_FLOOR  = 4700.00  # hard floor — kept for backwards compat
 CHALLENGE_TARGET = 5500.00  # challenge passed
-RISK_PER_TRADE = 50.00  # fixed dollar risk per trade (1%)
-REWARD_PER_TRADE = 100.00  # 2R = $100 win
-MAX_OPEN_TRADES = 2  # max concurrent positions
-DEFAULT_INTERVAL = 600  # 10 minutes
+RISK_PER_TRADE   = BASE_RISK_USDT  # base dollar risk per trade (score-adjusted dynamically)
+REWARD_PER_TRADE = 100.00   # 2R = $100 win (at full size)
+MAX_OPEN_TRADES  = 2        # max concurrent positions
+DEFAULT_INTERVAL = 600      # 10 minutes
 
 # -----------------------------------------------------------
 # FILE PATHS
@@ -180,6 +204,9 @@ def reset_state():
     # Fresh Start - Ensure ALL expected keys for current dashboard are present
     state = {
         "balance": CHALLENGE_START,
+        "peak_balance": CHALLENGE_START,  # Task 8 — trail from peak
+        "weekly_open_balance": CHALLENGE_START,  # Task 8 — weekly loss calc
+        "weekly_open_date": datetime.now().strftime("%Y-%m-%d"),
         "total_trades": 0,
         "wins": 0,
         "losses": 0,
@@ -190,6 +217,7 @@ def reset_state():
         "closed_trades": [],       # History of closed trades
         "open_trades": [],         # Active positions
         "visited_signals": [],     # Deduplication memory
+        "halt_reason": None,       # Task 8 — why trading was halted
     }
     save_state(state)
     event(state, "RESET", f"Challenge reset to ${CHALLENGE_START:.2f}")
@@ -272,6 +300,325 @@ def print_dashboard(state: Dict):
 
 
 # -----------------------------------------------------------
+# TASK 3 — Session Filter
+# WHY: The best setups happen during London Open and NY Open.
+# Asian session has low liquidity and frequently reverses London.
+# We skip lower-tier setups in the Asian session entirely.
+# -----------------------------------------------------------
+
+def check_session_allows_trade(setup_tier: str) -> tuple:
+    """
+    TASK 3 — Determine if the current session allows a trade for this tier.
+
+    Rules:
+      - S-tier and A++ tier  : allowed in ANY session
+      - A-tier               : london_open or ny_open only
+      - B-tier               : london_open or ny_open only
+      - Asian session        : only S-tier setups allowed (all others skipped)
+      - off_hours            : only S-tier setups allowed
+
+    Returns:
+        (allowed: bool, session_name: str)
+    """
+    session = get_current_session()  # UTC-based session lookup
+    tier_rank = {"S": 0, "A++": 1, "A": 2, "B": 3}  # lower = better
+    min_tier_rank = tier_rank.get(SESSION_MIN_TIER.get("asian", "S"), 0)
+
+    if session == "asian" or session == "off_hours":
+        # Only S-tier or better allowed in Asian/off-hours
+        allowed = tier_rank.get(setup_tier, 9) <= min_tier_rank
+        return allowed, session
+
+    # London Open, NY Open, London Close — A and above allowed
+    min_other_rank = tier_rank.get(SESSION_MIN_TIER.get("other", "A"), 2)
+    allowed = tier_rank.get(setup_tier, 9) <= min_other_rank
+    return allowed, session
+
+
+# -----------------------------------------------------------
+# TASK 5 — Correlation Check
+# WHY: BTC, ETH, SOL are highly correlated. Taking both BTC long
+# and ETH long is not diversification — it doubles the risk from
+# a single macro move. We allow at most one trade per group.
+# Counter-direction trades are allowed (natural hedge).
+# -----------------------------------------------------------
+
+def is_correlated_trade_open(state: Dict, symbol: str, direction: str) -> bool:
+    """
+    TASK 5 — Check if we already have an open trade in the same
+    correlation group AND the same direction as the new signal.
+
+    Rules:
+      - Same group + SAME direction  → skip (over-exposed)
+      - Same group + OPPOSITE direction → allow (natural hedge)
+      - Different group → always allow
+
+    Args:
+        state     : Challenge state dict with 'open_trades' list.
+        symbol    : e.g., 'ETH/USDT'
+        direction : 'LONG' or 'SHORT'
+
+    Returns:
+        True if a conflicting correlated trade is open (should skip).
+        False if the new trade is safe to enter.
+    """
+    # Find which correlation group this symbol belongs to
+    my_group = None
+    for group in CORRELATION_GROUPS:
+        if symbol in group:
+            my_group = group
+            break
+
+    if my_group is None:
+        return False  # Symbol not in any group — no correlation risk
+
+    # Check every open trade against the group
+    for trade in state.get("open_trades", []):
+        if trade["symbol"] in my_group and trade["symbol"] != symbol:
+            # Only block if SAME direction (different direction = hedge)
+            if trade["direction"] == direction:
+                return True  # Block: same group, same direction
+
+    return False  # No conflict found
+
+
+# -----------------------------------------------------------
+# TASK 6 — Setup Quality Score for Variable Sizing
+# WHY: Not all setups deserve the same risk. A perfect S-tier
+# setup with HTF SFP, session confluence, and trend alignment
+# should get full size ($50). A marginal A-tier setup gets half.
+# -----------------------------------------------------------
+
+def score_setup(signal: Dict) -> int:
+    """
+    TASK 6 — Score a setup from 0 to 13 based on confluence factors.
+    Higher score = larger position size.
+
+    Scoring breakdown:
+      +3 : HTF SFP confirmed (the sl_type contains 'sfp')
+      +2 : LTF structure break is impulsive (displacement_strength > 1.5)
+      +2 : FVG and Order Block overlap (anchor_type == CONFLUENCE)
+      +1 : Trade is in london_open or ny_open session
+      +1 : Regime is trending (strong_bull or strong_bear)
+      +2 : Second SFP confluences exist (sl_type is ltf_sfp)
+      +2 : Tier is S (highest quality)
+
+    Returns:
+        Integer score from 0 to 13.
+    """
+    score = 0
+
+    # +3 if HTF SFP was used for the stop-loss (SFP at HTF = institutional footprint)
+    sl_type = signal.get("sl_type", "")
+    if "sfp" in sl_type:
+        score += 3
+
+    # +2 if LTF displacement was strong (impulse candle, not just a drift)
+    disp = signal.get("metadata", {}).get("displacement_strength", 0)
+    if disp >= 1.5:
+        score += 2
+
+    # +2 if setup has FVG + OB overlap (strongest confluence possible)
+    if signal.get("anchor_type") == "CONFLUENCE":
+        score += 2
+
+    # +1 if we are in a prime session (London Open or NY Open)
+    session = get_current_session()
+    if session in ("london_open", "ny_open"):
+        score += 1
+
+    # +1 if the market regime is strongly trending (not ranging)
+    regime = signal.get("regime", "ranging")
+    if regime in ("strong_bull", "strong_bear", "trending_up", "trending_down"):
+        score += 1
+
+    # +2 if we have a nested LTF SFP (more precise SL anchor = less noise)
+    if sl_type == "ltf_sfp":
+        score += 2
+
+    # +2 if this is an S-tier setup (the best of the best)
+    if signal.get("setup_tier") == "S":
+        score += 2
+
+    return score
+
+
+def get_risk_for_score(score: int) -> float:
+    """
+    TASK 6 — Convert a quality score to a dollar risk amount.
+
+    Based on SCORE_THRESHOLDS in config:
+      Score >= 9  → full $50 risk
+      Score 6-8   → $35 risk (70%)
+      Score 4-5   → $25 risk (50%)
+      Score < 4   → skip entirely (returns 0)
+    """
+    # Check tiers from best to worst
+    for tier_name, tier_cfg in sorted(
+        SCORE_THRESHOLDS.items(),
+        key=lambda x: x[1]["min_score"],
+        reverse=True
+    ):
+        if score >= tier_cfg["min_score"]:
+            return round(BASE_RISK_USDT * tier_cfg["risk_pct"], 2)
+    return 0.0  # Score below minimum — skip this setup
+
+
+# -----------------------------------------------------------
+# TASK 8 — Trailing Drawdown Halt
+# WHY: A fixed floor ($4700) doesn’t protect profits. If we grow
+# to $5500 then lose $300, we should halt at $5500 * 0.94 = $5170,
+# not wait until $4700. We also add a weekly loss limit.
+# -----------------------------------------------------------
+
+def update_peak_balance(state: Dict):
+    """
+    TASK 8 — Update the peak balance tracker whenever balance rises.
+    This is the reference point for the trailing halt calculation.
+    Must be called every time the balance changes.
+    """
+    current = state["balance"]
+    peak    = state.get("peak_balance", CHALLENGE_START)
+    if current > peak:
+        state["peak_balance"] = current  # New high water mark!
+
+
+def check_drawdown_halt(state: Dict) -> bool:
+    """
+    TASK 8 — Check if the trailing drawdown limit has been hit.
+
+    Halt rules:
+      1. Trailing halt: if balance <= peak_balance * (1 - TRAILING_HALT_PCT)
+         i.e., 6% drop from the highest point we have ever reached.
+      2. Weekly loss limit: if (weekly_open_balance - balance) / weekly_open_balance
+         exceeds MAX_WEEKLY_LOSS_PCT (8%), pause until next Monday.
+
+    Returns:
+        True if trading should be halted now.
+        False if we are within acceptable limits.
+    """
+    balance = state["balance"]
+    peak    = state.get("peak_balance", CHALLENGE_START)
+
+    # ── Rule 1: Trailing halt from peak ──
+    halt_level = peak * (1.0 - TRAILING_HALT_PCT)
+    if balance <= halt_level:
+        msg = f"Drawdown halt triggered! Peak: ${peak:.2f} | Current: ${balance:.2f} | Halt level: ${halt_level:.2f}"
+        event(state, "HALT", msg)
+        state["status"] = "STOPPED"
+        state["halt_reason"] = "trailing_drawdown"
+        return True
+
+    # ── Rule 2: Weekly loss limit ──
+    # Check if it's a new week (Monday) and reset the weekly reference
+    today = datetime.now().strftime("%Y-%m-%d")
+    weekly_open_date = state.get("weekly_open_date", today)
+
+    # Parse the stored date and check if we're in a new Monday
+    try:
+        stored_dt  = datetime.strptime(weekly_open_date, "%Y-%m-%d")
+        today_dt   = datetime.strptime(today, "%Y-%m-%d")
+        days_since = (today_dt - stored_dt).days
+        # Reset weekly tracking every Monday
+        if today_dt.weekday() == 0 and days_since >= 7:
+            state["weekly_open_balance"] = balance
+            state["weekly_open_date"]    = today
+    except Exception:
+        pass  # If date parsing fails, just skip weekly check
+
+    weekly_open = state.get("weekly_open_balance", CHALLENGE_START)
+    if weekly_open > 0:
+        weekly_loss_pct = (weekly_open - balance) / weekly_open
+        if weekly_loss_pct >= MAX_WEEKLY_LOSS_PCT:
+            msg = (
+                f"Weekly loss limit hit! Open: ${weekly_open:.2f} | "
+                f"Current: ${balance:.2f} | "
+                f"Loss: {weekly_loss_pct:.1%} (limit: {MAX_WEEKLY_LOSS_PCT:.0%}). "
+                f"Pausing until next Monday."
+            )
+            event(state, "HALT", msg)
+            state["halt_reason"] = "weekly_loss_limit"
+            # Don't permanently stop — mark as halted until Monday
+            state["status"] = "WEEKLY_HALT"
+            return True
+
+    return False  # All limits are OK, continue trading
+
+
+# -----------------------------------------------------------
+# TASK 9 — Time-Based Trade Invalidation
+# WHY: A setup that hasn’t reached 1R in our favour after the
+# maximum allowed bars has failed to play out. Holding it longer
+# just ties up margin and risks a late adverse move.
+# -----------------------------------------------------------
+
+def check_time_invalidation(
+    trade: Dict,
+    current_bar_idx: int,
+    df_ltf: pd.DataFrame,
+) -> bool:
+    """
+    TASK 9 — Check if a trade has been open too long without reaching 1R.
+
+    Logic:
+      1. Look up the max duration for this trade’s timeframe
+         from MAX_TRADE_DURATION in config.
+      2. Count bars since entry.
+      3. If bars_open > max and the trade never hit 1R → return True (close it).
+
+    Args:
+        trade           : Open trade dict from state['open_trades'].
+        current_bar_idx : Current bar index in df_ltf.
+        df_ltf          : The LTF OHLCV DataFrame used for this trade.
+
+    Returns:
+        True if the trade should be closed (time expired, no 1R hit).
+        False if the trade is still within its time window OR has hit 1R.
+    """
+    # Find which chain/timeframe this trade is using
+    chain_name = trade.get("chain", "intraday")
+    all_chains = {**ALIGNMENTS, **RETIRED_ALIGNMENTS}
+    tf_entry   = all_chains.get(chain_name, {}).get("entry", "15m")
+
+    max_bars = MAX_TRADE_DURATION.get(tf_entry, 48)  # default 48 bars
+
+    # entry_bar_index is stored when we open the trade
+    entry_bar_idx = trade.get("entry_bar_idx", None)
+    if entry_bar_idx is None:
+        return False  # No index stored — can't check
+
+    bars_open = current_bar_idx - entry_bar_idx
+    if bars_open <= max_bars:
+        return False  # Still within allowed window
+
+    # Check if price ever reached 1R in our direction
+    entry    = trade["entry_price"]
+    sl       = trade["sl_price"]
+    risk     = abs(entry - sl)
+    one_r    = risk  # 1R distance
+
+    direction = trade["direction"]
+    # Look through candles since entry
+    slice_start = max(0, entry_bar_idx)
+    slice_end   = current_bar_idx + 1
+    price_slice = df_ltf.iloc[slice_start:slice_end]
+
+    max_r_reached = 0.0
+    if direction == "LONG":
+        best_high = price_slice["high"].max()
+        max_r_reached = (best_high - entry) / one_r if one_r > 0 else 0.0
+    else:
+        best_low  = price_slice["low"].min()
+        max_r_reached = (entry - best_low) / one_r if one_r > 0 else 0.0
+
+    # If price never reached 1R in our direction → time invalidation
+    if max_r_reached < 1.0:
+        return True  # Close this stale trade
+
+    return False  # Price reached 1R at some point, let it run
+
+
+# -----------------------------------------------------------
 # SIGNAL SCANNER (adapted from live_scanner.scan_symbol)
 # -----------------------------------------------------------
 
@@ -327,6 +674,20 @@ def scan_for_signal(
     bias_reason = reason_aligned.iloc[last_idx]
     bias_dir = 1 if current_bias == 1 else -1
 
+    # ── Trend-Following Filter (Counter-Trend Block) ──
+    if SKIP_COUNTER_TREND:
+        if regime == "trending_up" and bias_dir == -1:
+            print(f"SKIP (Counter-Trend SHORT in context trending_up)", end=" ")
+            return None
+        elif regime == "trending_down" and bias_dir == 1:
+            print(f"SKIP (Counter-Trend LONG in context trending_down)", end=" ")
+            return None
+
+    # ── Ranging Regime Block ──
+    if SKIP_RANGING_REGIME and regime == "ranging":
+        print(f"SKIP (Ranging context regime)", end=" ")
+        return None
+
     # FVGs
     fvgs = lux.detect_luxalgo_fvgs(
         df_ltf_df.copy(),
@@ -344,7 +705,7 @@ def scan_for_signal(
     ob_range = None
     anchor_type = None
 
-    for j in range(last_idx, max(last_idx - 30, 0), -1):
+    for j in range(last_idx, max(last_idx - 100, 0), -1):
         has_fvg = (bias_dir == 1 and fvgs["fvg_bull"].iloc[j]) or (
             bias_dir == -1 and fvgs["fvg_bear"].iloc[j]
         )
@@ -359,7 +720,7 @@ def scan_for_signal(
 
     if latest_fvg_idx == -1:
         # try OB
-        for j in range(last_idx, max(last_idx - 30, 0), -1):
+        for j in range(last_idx, max(last_idx - 100, 0), -1):
             ts = df_ltf_df.index[j]
             kind = "bull" if bias_dir == 1 else "bear"
             match = [o for o in ltf_obs if o["time"] == ts and o["type"] == kind]
@@ -409,27 +770,87 @@ def scan_for_signal(
     midpoint  = (top + btm) / 2
     price_now = df_ltf_df["close"].iloc[last_idx]
 
-    if bias_dir == 1:  # LONG
-        entry = midpoint
-        # Try structural swing SL first
-        swing_sl = find_protected_swing(df_ltf_df, last_idx, is_long=True)
-        if swing_sl is not None and swing_sl < btm:
-            sl      = swing_sl
+    # ── HTF Premium/Discount Filter ──
+    if USE_PREMIUM_DISCOUNT:
+        lookback_htf = 40
+        if len(df_context) >= lookback_htf:
+            recent_htf = df_context.tail(lookback_htf)
+            htf_high = recent_htf['high'].max()
+            htf_low = recent_htf['low'].min()
+            htf_mid = (htf_high + htf_low) / 2
+            
+            if bias_dir == 1 and price_now > htf_mid:
+                print(f"SKIP (HTF Premium: {format_price(price_now)} > {format_price(htf_mid)})", end=" ")
+                return None
+            elif bias_dir == -1 and price_now < htf_mid:
+                print(f"SKIP (HTF Discount: {format_price(price_now)} < {format_price(htf_mid)})", end=" ")
+                return None
+
+    # ─────────────────────────────────────────────────────────────
+    # NESTED SFP STOP-LOSS LOGIC
+    # Priority: LTF SFP (tighter/higher RR) > HTF SFP (structural) > FVG boundary
+    # Discard if final stop is wider than MAX_STOP_DISTANCE (protects RR).
+    # ─────────────────────────────────────────────────────────────
+    is_long  = (bias_dir == 1)
+    is_btc   = "BTC" in symbol
+    min_sl_dist = MIN_SL_PCT_BTC if is_btc else MIN_SL_PCT_ALTS
+    entry    = midpoint  # Always enter at FVG midpoint (institutional equilibrium)
+
+    # 1. HTF SFP — from the bias timeframe (1H or 4H)
+    #    lookback = 96 bars covers ~4 sessions on 1H, ~24 sessions on 4H
+    htf_sfp = find_latest_sfp(df_bias_df, is_long=is_long, lookback=96)
+
+    # 2. LTF SFP — from the entry timeframe (5m or 15m)
+    #    lookback = 100 bars covers ~8 hours on 5m, ~25 hours on 15m
+    ltf_sfp = find_latest_sfp(df_ltf_df,  is_long=is_long, lookback=100)
+
+    # 3. Choose SL by priority
+    sl       = None
+    sl_type  = "fvg_boundary"  # fallback label
+
+    if htf_sfp:
+        htf_sl_price, htf_sl_time = htf_sfp
+        sl       = htf_sl_price
+        sl_type  = "htf_sfp"
+
+        # Check if there is an LTF SFP that formed AFTER the HTF sweep
+        if ltf_sfp:
+            ltf_sl_price, ltf_sl_time = ltf_sfp
+            if ltf_sl_time > htf_sl_time:  # only valid if LTF sweep is more recent
+                sl      = ltf_sl_price
+                sl_type = "ltf_sfp"  # tighter stop = higher RR
+
+    # 4. Fallback: no SFP found — try Protected Swing High/Low, then use FVG boundary
+    if sl is None:
+        swing_sl = find_protected_swing(df_ltf_df, last_idx, is_long=is_long, lookback=20)
+        if swing_sl is not None and not pd.isna(swing_sl):
+            sl = swing_sl
             sl_type = "protected_swing"
         else:
-            sl      = btm * 0.999   # fallback: 0.1% below FVG bottom
+            if is_long:
+                sl = btm * 0.998
+            else:
+                sl = top * 1.002
             sl_type = "fvg_boundary"
-        tp = entry + (entry - sl) * 2.0
-    else:  # SHORT
-        entry = midpoint
-        swing_sl = find_protected_swing(df_ltf_df, last_idx, is_long=False)
-        if swing_sl is not None and swing_sl > top:
-            sl      = swing_sl
-            sl_type = "protected_swing"
-        else:
-            sl      = top * 1.001   # fallback: 0.1% above FVG top
-            sl_type = "fvg_boundary"
-        tp = entry - (sl - entry) * 2.0
+
+    # 5. Minimum distance floor (survive noise)
+    if is_long:
+        if (entry - sl) < (entry * min_sl_dist):
+            sl = entry - (entry * min_sl_dist)
+    else:
+        if (sl - entry) < (entry * min_sl_dist):
+            sl = entry + (entry * min_sl_dist)
+
+    # 6. DISCARD if stop is too wide (low RR) — no trade is better than a bad trade
+    stop_pct = abs(entry - sl) / entry
+    if stop_pct > MAX_STOP_DISTANCE:
+        return None   # Logged by the caller as skipped
+
+    # 7. Take-profit at 2R
+    if is_long:
+        tp = entry + (entry - sl) * RISK_REWARD
+    else:
+        tp = entry - (sl - entry) * RISK_REWARD
 
     # Unique fingerprint for this specific FVG zone + timeframe chain.
     # This allow taking the same zone on Daily and Scalp, but blocks duplicates on the same TF.
@@ -479,6 +900,20 @@ def get_market_metadata(df: pd.DataFrame) -> Dict:
 def open_trade(state: Dict, signal: Dict) -> Dict:
     """Record a new paper trade entry."""
     tid = f"T{state['next_trade_id']:04d}"
+
+    # ── TASK 6: Score the setup and compute risk-adjusted size ──
+    setup_score = score_setup(signal)
+    trade_risk  = get_risk_for_score(setup_score)
+    if trade_risk <= 0:
+        event(state, "SKIP", f"Score {setup_score}/13 below minimum — setup skipped.")
+        return None  # Score too low — don't take this trade
+
+    # Scale the reward proportionally (same RR ratio, smaller size)
+    trade_reward = round(trade_risk * RISK_REWARD, 2)
+
+    # ── TASK 3: Record which session we entered in ──
+    session = get_current_session()
+
     trade = {
         "trade_id": tid,
         "opened_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -502,6 +937,20 @@ def open_trade(state: Dict, signal: Dict) -> Dict:
         "scan_number": state["scan_count"],
         "exchange_id": signal.get("exchange_id", "binance"),
         "notes": "",
+        # Task 3: Session tracking
+        "session": session,
+        # Task 4: Trade management state
+        "be_triggered": False,          # True once SL moved to breakeven (at 1.5R)
+        "partial_exit_done": False,     # True once 50% was closed at 2R
+        "trailing_active": False,       # True once trailing stop is in use
+        "trailing_sl": None,            # Current trailing stop level
+        "max_r_reached": 0.0,           # Highest R multiple hit so far
+        # Task 6: Sizing info
+        "setup_score": setup_score,
+        "trade_risk": trade_risk,
+        "trade_reward": trade_reward,
+        # Task 9: Bar index at entry (for time invalidation)
+        "entry_bar_idx": None,          # set after fetch in check_and_close
     }
     state["open_trades"].append(trade)
     state["next_trade_id"] += 1
@@ -516,7 +965,9 @@ def open_trade(state: Dict, signal: Dict) -> Dict:
         f"SL: {format_price(signal['sl_price'])}  "
         f"TP: {format_price(signal['tp_price'])}  "
         f"Tier: {signal['setup_tier']}  "
+        f"Score: {setup_score}/13  Risk: ${trade_risk}  "
         f"Chain: {signal['chain'].upper()}  "
+        f"Session: {session}  "
         f"Regime: {signal['regime']}",
     )
     return trade
@@ -524,28 +975,37 @@ def open_trade(state: Dict, signal: Dict) -> Dict:
 
 def check_and_close_trades(state: Dict):
     """
-    For each open trade, fetch latest candle and check if SL or TP was hit.
-    Paper fill: if current candle's range includes SL or TP, close it.
+    TASK 4 UPDATED: For each open trade, fetch latest candle and check:
+    1. Break-even trigger at 1.5R (CHANGED from 1.8R — earlier protection)
+    2. Partial exit at 2R (close 50% of position)
+    3. Trailing stop after 2R using LTF swing lows/highs
+    4. SL or TP hit at full position
+    5. TASK 9: Time-based invalidation (close if no 1R after max bars)
+
+    Paper fill: if current candle’s range includes SL or TP, close it.
     """
     still_open = []
     for trade in state["open_trades"]:
+        if trade.get("disabled"):
+            still_open.append(trade)
+            continue
         sym = trade["symbol"]
-        
+
         # Safe chain lookup (check active first, then retired)
-        chain_name = trade["chain"]
+        chain_name  = trade["chain"]
         all_alignments = {**ALIGNMENTS, **RETIRED_ALIGNMENTS}
-        
+
         if chain_name not in all_alignments:
             event(state, "WARN", f"Unknown chain '{chain_name}' for {sym} [{trade['trade_id']}]. Using daily as fallback.")
-            chain = ALIGNMENTS["daily"]
+            chain = ALIGNMENTS.get("intraday", list(ALIGNMENTS.values())[0])
         else:
             chain = all_alignments[chain_name]
-            
+
         tf_ltf = chain["entry"]
-        ex_id = trade.get("exchange_id", "binance")
+        ex_id  = trade.get("exchange_id", "binance")
 
         try:
-            df = cisd.fetch_live_ohlcv(sym, tf_ltf, 5, ex_id)
+            df = cisd.fetch_live_ohlcv(sym, tf_ltf, 20, ex_id)  # fetch last 20 bars
         except Exception:
             still_open.append(trade)
             continue
@@ -554,36 +1014,163 @@ def check_and_close_trades(state: Dict):
             still_open.append(trade)
             continue
 
-        latest = df.iloc[-1]
-        hi = latest["high"]
-        lo = latest["low"]
-        close = latest["close"]
+        # ── Set entry bar index if not already stored (Task 9) ──
+        if trade.get("entry_bar_idx") is None:
+            trade["entry_bar_idx"] = max(0, len(df) - 5)  # approx: within last 5 bars
 
-        sl = trade["sl_price"]
-        tp = trade["tp_price"]
+        latest    = df.iloc[-1]
+        hi        = latest["high"]
+        lo        = latest["low"]
+        close_now = latest["close"]
+
+        sl        = trade["sl_price"]
+        tp        = trade["tp_price"]
         direction = trade["direction"]
+        entry     = trade["entry_price"]
+        risk      = abs(entry - sl)
 
-        result = None
-        exit_price = close
+        # ── TASK 4: Calculate current R multiple ──
+        if direction == "LONG":
+            current_r = (close_now - entry) / risk if risk > 0 else 0
+        else:
+            current_r = (entry - close_now) / risk if risk > 0 else 0
+
+        # Update max R reached (for time invalidation check)
+        trade["max_r_reached"] = max(trade.get("max_r_reached", 0), current_r)
+
+        # ── TASK 9: Time-based invalidation (skip for manual trades) ──
+        if not trade.get("manual") and check_time_invalidation(trade, len(df) - 1, df):
+            result     = "TIME_EXPIRED"
+            exit_price = close_now
+            pnl        = 0.0  # close at market (approx breakeven for paper trading)
+            state["balance"] += pnl
+            update_peak_balance(state)
+            trade.update({
+                "closed_at" : datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "exit_price": round(exit_price, 8),
+                "result"    : result,
+                "pnl_usd"   : pnl,
+                "balance_after": round(state["balance"], 2),
+                "notes"     : f"Time expired after {len(df)} bars with max_r={trade['max_r_reached']:.2f}R",
+            })
+            state["closed_trades"].append(trade)
+            log_trade_to_csv(trade)
+            event(state, "TIME_EXP",
+                  f"{trade['trade_id']} {sym} {direction} closed (time invalidation, {trade['max_r_reached']:.2f}R reached)")
+            continue
+
+        result     = None
+        exit_price = close_now
+
+        # ── TASK 4: Break-even trigger at 1.5R (CHANGED from 1.8R) ──
+        if not trade.get("be_triggered", False):
+            be_r_hit = (
+                (direction == "LONG"  and hi >= entry + risk * BE_TRIGGER_R) or
+                (direction == "SHORT" and lo <= entry - risk * BE_TRIGGER_R)
+            )
+            if be_r_hit:
+                trade["sl_price"]    = entry  # move stop to entry price (breakeven)
+                trade["be_triggered"] = True
+                sl = entry  # update local variable too
+                event(state, "BE",
+                      f"{trade['trade_id']} {sym} — SL moved to breakeven at {format_price(entry)} (1.5R hit)")
+
+        # ── TASK 4: Partial exit at 2R ──
+        # Note: In paper trading we simulate this by halving the pnl on a full TP hit.
+        # In a real system you would close half the position here.
+        if not trade.get("partial_exit_done", False):
+            partial_r_hit = (
+                (direction == "LONG"  and hi >= entry + risk * PARTIAL_EXIT_R) or
+                (direction == "SHORT" and lo <= entry - risk * PARTIAL_EXIT_R)
+            )
+            if partial_r_hit:
+                # Record that partial exit happened
+                trade["partial_exit_done"] = True
+                trade["trailing_active"]   = True  # start trailing after partial
+                partial_pnl = trade.get("trade_reward", REWARD_PER_TRADE) * PARTIAL_EXIT_PCT
+                state["balance"] += partial_pnl
+                update_peak_balance(state)
+                event(state, "PARTIAL",
+                      f"{trade['trade_id']} {sym} — 50% closed at 2R (+${partial_pnl:.2f}). "
+                      f"Trailing now active. Balance: ${state['balance']:.2f}")
+
+        # ── TASK 4: Trailing stop after 2R (move to each new swing point) ──
+        if trade.get("trailing_active", False):
+            # Use the last 5 bars to find the most recent LTF swing low (longs) / swing high (shorts)
+            lookback_bars = df.tail(5)
+            if direction == "LONG" and len(lookback_bars) >= 3:
+                # Find new swing lows in recent bars
+                for k in range(len(lookback_bars) - 1, 0, -1):
+                    lo_val = lookback_bars["low"].iloc[k]
+                    lo_l   = lookback_bars["low"].iloc[k - 1]
+                    lo_r   = lookback_bars["low"].iloc[-1] if k < len(lookback_bars) - 1 else close_now
+                    if lo_val < lo_l:  # potential swing low
+                        new_trail_sl = lo_val
+                        current_trail = trade.get("trailing_sl") if trade.get("trailing_sl") is not None else sl
+                        # NEVER move the trailing stop backwards (only tighten)
+                        if new_trail_sl > current_trail:
+                            trade["trailing_sl"] = new_trail_sl
+                            trade["sl_price"]    = new_trail_sl
+                            sl = new_trail_sl
+                            event(state, "TRAIL",
+                                  f"{trade['trade_id']} {sym} trailing SL -> {format_price(new_trail_sl)}")
+                        break
+            elif direction == "SHORT" and len(lookback_bars) >= 3:
+                # Find new swing highs in recent bars
+                for k in range(len(lookback_bars) - 1, 0, -1):
+                    hi_val = lookback_bars["high"].iloc[k]
+                    hi_l   = lookback_bars["high"].iloc[k - 1]
+                    if hi_val > hi_l:  # potential swing high
+                        new_trail_sl = hi_val
+                        current_trail = trade.get("trailing_sl") if trade.get("trailing_sl") is not None else sl
+                        # NEVER move trailing stop backwards
+                        if new_trail_sl < current_trail:
+                            trade["trailing_sl"] = new_trail_sl
+                            trade["sl_price"]    = new_trail_sl
+                            sl = new_trail_sl
+                            event(state, "TRAIL",
+                                  f"{trade['trade_id']} {sym} trailing SL -> {format_price(new_trail_sl)}")
+                        break
+
+        # ── Standard SL / TP check ──
+        # Use trade-specific risk/reward (Task 6: variable sizing)
+        # Falls back to global RISK_PER_TRADE if not stored
+        trade_risk_amt   = trade.get("trade_risk",   RISK_PER_TRADE)
+        trade_reward_amt = trade.get("trade_reward", REWARD_PER_TRADE)
 
         if direction == "LONG":
-            if lo <= sl:  # SL hit
-                result = "LOSS"
+            if lo <= sl:      # SL hit
+                result     = "BE" if trade.get("be_triggered") else "LOSS"
                 exit_price = sl
-                pnl = -RISK_PER_TRADE
-            elif hi >= tp:  # TP hit
-                result = "WIN"
+                # If partial exit was done, we already locked in 50% profit
+                # The remaining 50% is lost at SL
+                if trade.get("partial_exit_done"):
+                    pnl = -(trade_risk_amt * PARTIAL_EXIT_PCT)  # lose 50% of risk on remaining
+                else:
+                    pnl = 0.0 if result == "BE" else -trade_risk_amt
+            elif hi >= tp:    # TP hit
+                result     = "WIN"
                 exit_price = tp
-                pnl = REWARD_PER_TRADE
+                if trade.get("partial_exit_done"):
+                    # Already got 50% at 2R; collect remaining 50% at TP
+                    pnl = trade_reward_amt * PARTIAL_EXIT_PCT
+                else:
+                    pnl = trade_reward_amt
         else:  # SHORT
-            if hi >= sl:  # SL hit
-                result = "LOSS"
+            if hi >= sl:      # SL hit
+                result     = "BE" if trade.get("be_triggered") else "LOSS"
                 exit_price = sl
-                pnl = -RISK_PER_TRADE
-            elif lo <= tp:  # TP hit
-                result = "WIN"
+                if trade.get("partial_exit_done"):
+                    pnl = -(trade_risk_amt * PARTIAL_EXIT_PCT)
+                else:
+                    pnl = 0.0 if result == "BE" else -trade_risk_amt
+            elif lo <= tp:    # TP hit
+                result     = "WIN"
                 exit_price = tp
-                pnl = REWARD_PER_TRADE
+                if trade.get("partial_exit_done"):
+                    pnl = trade_reward_amt * PARTIAL_EXIT_PCT
+                else:
+                    pnl = trade_reward_amt
 
         if result is None:
             still_open.append(trade)
@@ -591,8 +1178,7 @@ def check_and_close_trades(state: Dict):
 
         # Close the trade
         state["balance"] += pnl
-        if state["balance"] > state.get("peak_balance", CHALLENGE_START):
-            state["peak_balance"] = state["balance"]
+        update_peak_balance(state)  # Task 8: update peak on every balance change
 
         trade.update(
             {
@@ -607,31 +1193,74 @@ def check_and_close_trades(state: Dict):
 
         if result == "WIN":
             state["wins"] += 1
-        else:
+        elif result == "LOSS":
             state["losses"] += 1
 
         state["closed_trades"].append(trade)
         log_trade_to_csv(trade)
 
-        marker = "WIN  +$100" if result == "WIN" else "LOSS  -$50"
+        pnl_label = f"+${abs(pnl):.2f}" if pnl >= 0 else f"-${abs(pnl):.2f}"
         event(
             state,
             result,
             f"{trade['trade_id']} {sym} {direction}  "
-            f"{marker}  Balance: ${state['balance']:.2f}  "
+            f"{pnl_label}  Balance: ${state['balance']:.2f}  "
+            f"Session: {trade.get('session','?')}  "
             f"Bias: {trade['bias_reason'][:60]}",
         )
+
+        # Task 10: After every N closed trades, compare live to backtest
+        n_closed = len(state["closed_trades"])
+        if n_closed > 0 and n_closed % LIVE_BACKTEST_CHECK_N == 0:
+            _run_live_backtest_check(state)
 
     state["open_trades"] = still_open
 
 
+def _run_live_backtest_check(state: Dict):
+    """
+    TASK 10 — Internal helper: run the live vs backtest comparison
+    and halt if deviation is too large.
+    These backtest stats should ideally come from your last backtest run.
+    For now we use conservative reference values.
+    """
+    # Reference backtest stats (update these after each backtest run)
+    REFERENCE_BACKTEST_STATS = {
+        "win_rate"      : 0.45,   # 45% win rate from last backtest
+        "profit_factor" : 1.50,   # 1.5 PF from last backtest
+    }
+
+    def halt_trading():
+        state["status"] = "STOPPED"
+        state["halt_reason"] = "live_backtest_deviation"
+        save_state(state)
+
+    result = compare_live_to_backtest(
+        live_trades    = state["closed_trades"],
+        backtest_stats = REFERENCE_BACKTEST_STATS,
+        halt_fn        = halt_trading,
+    )
+    if result.get("checked"):
+        event(state, "LIVE_CHECK",
+              f"Live vs Backtest: WR={result['live_wr']:.1%} "
+              f"| PF={result['live_pf']} "
+              f"| Deviation={result['max_deviation']:.1%} "
+              f"| Action={result['action']}")
+
+
+
 def check_challenge_status(state: Dict) -> str:
-    """Returns ACTIVE | PASSED | STOPPED."""
+    """Returns ACTIVE | PASSED | STOPPED | WEEKLY_HALT."""
     bal = state["balance"]
     if bal >= CHALLENGE_TARGET:
         return "PASSED"
+    # Task 8: trailing halt check (in addition to fixed floor)
+    if check_drawdown_halt(state):
+        return state["status"]  # already set inside check_drawdown_halt
     if bal <= CHALLENGE_FLOOR:
         return "STOPPED"
+    if state.get("status") == "WEEKLY_HALT":
+        return "WEEKLY_HALT"
     return "ACTIVE"
 
 
@@ -658,6 +1287,9 @@ def check_pending_trades(state: Dict):
     still_pending = []
     
     for pt in state["pending_trades"]:
+        if pt.get("disabled"):
+            still_pending.append(pt)
+            continue
         try:
             now_dt = datetime.now()
             exp_dt = datetime.strptime(pt["expires_at"], "%Y-%m-%d %H:%M:%S")
@@ -704,14 +1336,41 @@ def check_pending_trades(state: Dict):
                 
             if triggered:
                 if len(state["open_trades"]) < MAX_OPEN_TRADES:
-                    pt["current_price"] = cur_price
-                    pt["entry_price"] = cur_price
+                    # FILL LOGIC: We assume fill at the intended LIMIT price 'ent'
+                    # unless the candle closed even BETTER (cur_price), in which
+                    # case we take the better price but KEEP the structural SL.
+                    # This fixes the "tight SL" bug where entry=close was too near SL.
+                    
+                    fill_price = ent # default to limit
+                    if dire == "LONG" and cur_price < ent:
+                        fill_price = cur_price
+                    elif dire == "SHORT" and cur_price > ent:
+                        fill_price = cur_price
+                    
+                    # ── MINIMUM STOP DISTANCE ENFORCEMENT ──
+                    is_btc = "BTC" in pt["symbol"]
+                    min_sl_dist = MIN_SL_PCT_BTC if is_btc else MIN_SL_PCT_ALTS
+                    min_dist_price = fill_price * min_sl_dist
+                    
+                    actual_dist = abs(fill_price - sl)
+                    
+                    # If SL is too tight (< 0.3%/0.5%), we shift it slightly to survive noise
+                    # OR we can discard the trade if preferred. Here we shift it.
+                    if actual_dist < min_dist_price:
+                        if dire == "LONG":
+                            sl = fill_price - min_dist_price
+                        else:
+                            sl = fill_price + min_dist_price
+                        actual_dist = min_dist_price
+                    
+                    pt["entry_price"] = round(fill_price, 8)
+                    pt["sl_price"] = round(sl, 8)
+                    
+                    # Recalculate TP based on the NEW entry and 2R risk
                     if dire == "LONG":
-                        actual_risk = cur_price - sl
-                        pt["tp_price"] = round(cur_price + actual_risk * 2.0, 8)
+                        pt["tp_price"] = round(fill_price + (actual_dist * RISK_REWARD), 8)
                     else:
-                        actual_risk = sl - cur_price
-                        pt["tp_price"] = round(cur_price - actual_risk * 2.0, 8)
+                        pt["tp_price"] = round(fill_price - (actual_dist * RISK_REWARD), 8)
                         
                     open_trade(state, pt)
                     key = pt.get("signal_key")
@@ -791,8 +1450,8 @@ def run_scan(state: Dict, chains_to_scan: List[str]):
                 sig = scan_for_signal(sym, chain_name, ex_id)
                 if sig:
                     # ── QUALITY GATE 1: Minimum Setup Tier ──
-                    tier_rank = {"A++": 0, "A": 1, "B": 2}
-                    min_rank  = {"A++": 0, "A": 1, "B": 2}.get(MIN_SETUP_TIER, 1)
+                    tier_rank = {"S": -1, "A++": 0, "A": 1, "B": 2}
+                    min_rank  = {"S": -1, "A++": 0, "A": 1, "B": 2}.get(MIN_SETUP_TIER, 1)
                     sig_rank  = tier_rank.get(sig.get("setup_tier", "B"), 2)
                     if sig_rank > min_rank:
                         print(f"SKIP (tier {sig['setup_tier']} below minimum {MIN_SETUP_TIER})")
@@ -930,6 +1589,47 @@ def print_final_report(state: Dict):
 # -----------------------------------------------------------
 
 
+def _print_startup_summary(state: Dict):
+    """
+    Print a summary of current system state on startup.
+    Shows: regime (from last known), active session, open trades,
+    current drawdown from peak.
+    WHY: Gives an instant snapshot before the first scan runs.
+    """
+    bal    = state["balance"]
+    peak   = state.get("peak_balance", CHALLENGE_START)
+    dd_pct = ((peak - bal) / peak * 100) if peak > 0 else 0
+    halt_lvl = peak * (1.0 - TRAILING_HALT_PCT)
+
+    session  = get_current_session()
+    n_open   = len(state.get("open_trades", []))
+    n_closed = len(state.get("closed_trades", []))
+    w        = state.get("wins", 0)
+    l        = state.get("losses", 0)
+
+    print("\n" + "=" * 62)
+    print("  SMC TRADING ENGINE — STARTUP SUMMARY")
+    print("=" * 62)
+    print(f"  Balance         : ${bal:.2f}  (Peak: ${peak:.2f})")
+    print(f"  Drawdown        : {dd_pct:.1f}% from peak  (halt at {TRAILING_HALT_PCT*100:.0f}% = ${halt_lvl:.2f})")
+    print(f"  Session (UTC)   : {session}")
+    print(f"  Open Trades     : {n_open}/{MAX_OPEN_TRADES}")
+    print(f"  Closed Trades   : {n_closed}  ({w}W / {l}L)")
+    print(f"  Weekly balance  : ${state.get('weekly_open_balance', bal):.2f} " +
+          f"(limit: -{MAX_WEEKLY_LOSS_PCT*100:.0f}% = ${state.get('weekly_open_balance', bal) * (1 - MAX_WEEKLY_LOSS_PCT):.2f})")
+    print(f"  BE trigger      : {BE_TRIGGER_R}R  |  Partial exit: {PARTIAL_EXIT_R}R ({PARTIAL_EXIT_PCT*100:.0f}%)")
+    print(f"  Halt reason     : {state.get('halt_reason', 'None')}")
+    if n_open > 0:
+        print("  Open positions  :")
+        for t in state["open_trades"]:
+            print(f"    [{t['trade_id']}] {t['symbol']} {t['direction']} "
+                  f"@ {format_price(t['entry_price'])}  "
+                  f"SL:{format_price(t['sl_price'])}  "
+                  f"TP:{format_price(t['tp_price'])}  "
+                  f"Score:{t.get('setup_score','?')}/13")
+    print("=" * 62)
+
+
 def main():
     parser = argparse.ArgumentParser(description="Paper Trading Challenge Engine")
     parser.add_argument(
@@ -954,16 +1654,36 @@ def main():
 
     os.makedirs("exports", exist_ok=True)
 
+    # ── STARTUP: Health check (validates all config) ──
+    is_healthy = run_system_health_check()
+    if not is_healthy:
+        print("\n  [ERROR] Config health check failed. Fix the above errors before running.")
+        return
+
     if args.reset:
         state = reset_state()
         print("  Challenge state reset. Starting fresh.")
     else:
         state = load_state()
 
-    if state["status"] != "ACTIVE":
+    # ── STARTUP: Self-heal state for new keys ──
+    defaults = {
+        "peak_balance": state.get("balance", CHALLENGE_START),
+        "weekly_open_balance": state.get("balance", CHALLENGE_START),
+        "weekly_open_date": datetime.now().strftime("%Y-%m-%d"),
+        "halt_reason": None,
+    }
+    for k, v in defaults.items():
+        if k not in state:
+            state[k] = v
+
+    if state["status"] not in ("ACTIVE", "WEEKLY_HALT"):
         print(f"\n  Challenge already {state['status']}. Use --reset to start fresh.")
         print_final_report(state)
         return
+
+    # ── STARTUP: Print system summary ──
+    _print_startup_summary(state)
 
     chains = args.chains
 

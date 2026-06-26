@@ -9,19 +9,19 @@ A professional-grade Python autonomous trading and live-monitoring framework for
 
 ## 📁 Project Architecture
 
-- **`challenge_trader.py`**: **Main Execution Engine**. Runs continuous scans, manages $5,000 challenge capital with automated risk management, and preserves state between restarts.
+- **`challenge_trader.py`**: **Main Execution Engine**. Runs continuous scans, manages $5,000 challenge capital with automated risk management. Now features **Institutional Stop Alignment** and **0.3%/0.5% Min-Risk protection**.
 - **`live_scanner.py`**: **Multi-Exchange Real-Time Monitor**. Features an automated loop to scan the market across Binance, OKX, and others for A-Tier setups.
 - **`core/`**: The brain of the project.
-  - `config.py`: **Single source of truth**. Centralized settings for Risk, Tiers, Watchlists, and Timeframe Alignments.
+  - `config.py`: **Single source of truth**. Now with **Minimum SL Distances** (0.3% BTC, 0.5% Alts).
   - `analysis.py`: Statistical engine for Monte Carlo simulations, Market Regime classification, and PnL validation.
-  - `lux_fvg.py`: Mathematical FVG and Liquidity Sweep (SFP) detection based on LuxAlgo logic.
+  - `lux_fvg.py`: Mathematical FVG and Liquidity Sweep (SFP) detection.
 - **`models/`**:
-  - `backtest_cisd.py`: **Institutional Reaction Model**. Logic for entering on FVG/OB "touches" with HTF confluence. Now supports multi-exchange pooling via CCXT.
+  - `backtest_cisd.py`: Logic for entering on FVG/OB "touches". Now features an **Enhanced Structural SL Finder** (detects SFPs and prominent wicks).
 - **`tools/`**:
-  - `view_candles.py`: Graphical plotter for visualizing SMC structures (FVG, OB, Sweeps).
-  - `analyse_challenges.py`: Deep-dive diagnostic for post-mortem analysis of challenge runs.
-  - `pine/`: Contains the TradingView implementation for system-to-chart parity.
-- **`exports/`**: Centralized storage for `challenge_state.json`, trade logs, and signal forensics.
+  - `view_candles.py`: Graphical plotter for visualizing SMC structures.
+  - `dry_run_btc_sl.py`: **Structural SL Tester**. Validate SL placement and HTF alignment on live data.
+  - `analyse_challenges.py`: Deep-dive diagnostic for post-mortem analysis.
+- **`exports/`**: Storage for `challenge_state.json`, trade logs, and **`trade_analysis_post_mortem.md`** reports.
 
 ---
 

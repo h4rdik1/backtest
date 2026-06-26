@@ -15,7 +15,10 @@ from core.config import (
     USE_PULLBACK_FILTER, USE_AUTO_BREAKEVEN, USE_LTF_OB_ENTRY,
     TEST_START, DATA_DIR,
     TF_CONTEXT, TF_BIAS, TF_ENTRY, ACTIVE_CHAIN, chain_label,
-    PROTECTED_SWING_LOOKBACK, PROTECTED_SWING_BUFFER
+    PROTECTED_SWING_LOOKBACK, PROTECTED_SWING_BUFFER,
+    MAX_STOP_DISTANCE,
+    # Task 1 — SFP constants
+    MIN_SWEEP_BUFFER_PCT, MAX_SWEEP_WAIT_BARS, SFP_CLOSE_BUFFER_PCT,
 )
 
 from core.analysis import (
@@ -173,53 +176,280 @@ def find_protected_swing(df: pd.DataFrame, bar_idx: int, is_long: bool,
                          lookback: int = PROTECTED_SWING_LOOKBACK,
                          buffer: float = PROTECTED_SWING_BUFFER):
     """
-    Walks back from bar_idx to find the most recent STRUCTURAL swing
-    low (for longs) or swing high (for shorts) that acts as a protection
-    level for the stop loss.
-
-    A swing low  = bar[i].low  < bar[i-1].low  AND bar[i].low  < bar[i+1].low
-    A swing high = bar[i].high > bar[i-1].high AND bar[i].high > bar[i+1].high
-
-    WHY: Placing SL just below the FVG boundary is too tight — normal
-    price noise will wick through it.  A protected swing is a confirmed
-    structural level that price already RESPECTED, so SL beyond it means
-    the setup is genuinely invalidated before we're stopped out.
-
-    Returns: SL price (float) or None if no swing found in the window.
+    Enhanced Protected Stop Finder.
+    Looks for:
+    1. Liquidity Sweeps (SFP): Wicks that cleared previous structure.
+    2. Structural Swings: Classic 3-bar fractal points.
+    3. Prominent Wicks: Deepest/Highest wick in the recent lookback.
     """
-    # Need at least 2 bars on each side of a candidate bar
     search_start = max(1, bar_idx - lookback)
-    search_end   = bar_idx - 1  # don't include the current entry bar
-
+    search_end   = bar_idx - 1
+    
+    # 1. Look for SFPs first (High Conviction)
+    from core.lux_fvg import detect_liquidity_sweeps
+    sweeps = detect_liquidity_sweeps(df.iloc[max(0, bar_idx - lookback - 10):bar_idx + 1].copy(), lookback=10)
+    
     if is_long:
+        # Check if latest bars had a Bullish Sweep (Stop Grab)
+        for i in range(len(sweeps)-1, max(0, len(sweeps)-10), -1):
+            if sweeps['sweep_bull'].iloc[i]:
+                # The SL should be just below the sweep wick
+                sweep_low = df['low'].loc[sweeps.index[i]]
+                return sweep_low * (1.0 - buffer)
+                
+        # 2. Classic Structural Swing
         best_swing = None
-        # Walk backwards — we want the MOST RECENT swing low
         for i in range(search_end, search_start - 1, -1):
-            if i < 1 or i >= len(df) - 1:
-                continue
-            lo   = df['low'].iloc[i]
-            lo_l = df['low'].iloc[i - 1]
-            lo_r = df['low'].iloc[i + 1]
+            if i < 1 or i >= len(df) - 1: continue
+            lo, lo_l, lo_r = df['low'].iloc[i], df['low'].iloc[i-1], df['low'].iloc[i+1]
             if lo < lo_l and lo < lo_r:
                 best_swing = lo
-                break  # most recent wins
-        if best_swing is not None:
-            return best_swing * (1.0 - buffer)   # SL just below the swing
-    else:
+                break
+        
+        # 3. Prominent Wick (Deepest in lookback)
+        deepest_wick = df['low'].iloc[search_start:search_end+1].min()
+        
+        # Priority: SFP > Structural Swing > Deepest Wick
+        final_sl = best_swing if best_swing is not None else deepest_wick
+        return final_sl * (1.0 - buffer)
+
+    else: # SHORT
+        for i in range(len(sweeps)-1, max(0, len(sweeps)-10), -1):
+            if sweeps['sweep_bear'].iloc[i]:
+                sweep_high = df['high'].loc[sweeps.index[i]]
+                return sweep_high * (1.0 + buffer)
+                
         best_swing = None
         for i in range(search_end, search_start - 1, -1):
-            if i < 1 or i >= len(df) - 1:
-                continue
-            hi   = df['high'].iloc[i]
-            hi_l = df['high'].iloc[i - 1]
-            hi_r = df['high'].iloc[i + 1]
+            if i < 1 or i >= len(df) - 1: continue
+            hi, hi_l, hi_r = df['high'].iloc[i], df['high'].iloc[i-1], df['high'].iloc[i+1]
             if hi > hi_l and hi > hi_r:
                 best_swing = hi
                 break
-        if best_swing is not None:
-            return best_swing * (1.0 + buffer)   # SL just above the swing
+        
+        highest_wick = df['high'].iloc[search_start:search_end+1].max()
+        final_sl = best_swing if best_swing is not None else highest_wick
+        return final_sl * (1.0 + buffer)
 
-    return None  # caller will use fallback
+
+# ══════════════════════════════════════════════════════════════
+# TASK 1 — 3-Candle SFP Detection System
+# CHANGED: Replaced the old single-candle wick-past-level check.
+# WHY: The old method caught ANY wick beyond a level, which
+# created many false signals. The 3-candle system requires:
+#   C1 → makes a swing (high for bearish SFP, low for bullish)
+#   C2 → pullback/push that sets the KEY level to watch
+#   C3 → must stay above C2 low (bullish) or below C2 high (bearish)
+#         — confirms C2 was NOT a breakout
+#   Sweep candle → wick goes beyond C2 level AND closes back inside
+# This structure means stops were hunted and price rejected firmly.
+# ══════════════════════════════════════════════════════════════
+
+def detect_sfp_pattern(
+    df: pd.DataFrame,
+    bar_idx: int,
+    is_long: bool,
+) -> dict:
+    """
+    TASK 1 — Detect a 3-candle SFP pattern ending at or before bar_idx.
+
+    A Bullish SFP works like this:
+      C1: Makes a swing HIGH (higher than left and right neighbours)
+      C2: Pulls back and makes a LOW — this is the KEY candle.
+          C2.low = the SFP level we are watching.
+      C3: Must stay ABOVE C2.low (C3.low > C2.low)
+          This confirms C2 was NOT a genuine breakdown.
+      Sweep candle (C4+): A new candle AFTER C3 that:
+          - Wicks BELOW C2.low (hunts stops)
+          - Closes BACK ABOVE C2.low (sellers trapped)
+          → Bullish SFP confirmed.
+
+    A Bearish SFP is the mirror image (longs trapped above C2.high).
+
+    Returns a dict with full pattern details, or None if no pattern.
+    """
+    # We need at least 6 bars to find a meaningful pattern
+    if bar_idx < 5 or bar_idx >= len(df):
+        return None
+
+    # Only search within a reasonable lookback window
+    search_start = max(0, bar_idx - 60)
+
+    # ── Bullish SFP: hunts stops BELOW a key low ──
+    if is_long:
+        # Step 1: Find C1 — a 3-bar swing HIGH
+        # (C1.high > left neighbour AND C1.high > right neighbour)
+        for c1 in range(bar_idx - 2, search_start, -1):
+            if c1 < 1 or c1 >= len(df) - 1:
+                continue
+            if not (df['high'].iloc[c1] > df['high'].iloc[c1 - 1] and
+                    df['high'].iloc[c1] > df['high'].iloc[c1 + 1]):
+                continue
+
+            # Step 2: Find C2 — the pullback candle right after C1
+            # C2 should make a swing LOW (a local dip)
+            c2 = c1 + 1
+            if c2 >= bar_idx:
+                continue  # no room for C3 and sweep
+
+            sfp_level = df['low'].iloc[c2]  # This is THE level to watch
+
+            # Step 3: C3 must stay ABOVE C2's low (strict rule)
+            c3 = c2 + 1
+            if c3 >= bar_idx:
+                continue
+            if df['low'].iloc[c3] <= sfp_level:
+                continue  # C3 broke the level — pattern is void
+
+            # Step 4: Check for invalidation BETWEEN C3 and current bar.
+            # If ANY candle BETWEEN C3 and the sweep candle already
+            # CLOSED BELOW the SFP level, the level was broken — not swept.
+            invalidated = False
+            for mid in range(c3 + 1, bar_idx):
+                if df['close'].iloc[mid] < sfp_level:
+                    invalidated = True
+                    break
+
+            if invalidated:
+                continue
+
+            # Step 5: Check MAX_SWEEP_WAIT_BARS — pattern expires after 10 bars
+            if bar_idx - c3 > MAX_SWEEP_WAIT_BARS:
+                continue  # Took too long — expired
+
+            # Step 6: Check the sweep candle at bar_idx
+            sweep = df.iloc[bar_idx]
+            min_wick_distance = sfp_level * MIN_SWEEP_BUFFER_PCT
+            min_close_back    = sfp_level + (sfp_level * SFP_CLOSE_BUFFER_PCT)
+
+            # The wick must go meaningfully below C2 low
+            wick_goes_below = sweep['low'] < (sfp_level - min_wick_distance)
+            # The candle must close firmly back ABOVE the SFP level
+            closes_above    = sweep['close'] > min_close_back
+
+            if wick_goes_below and closes_above:
+                sweep_wick = sfp_level - sweep['low']  # how far wick went beyond
+                return {
+                    "type"       : "bullish",
+                    "c1_idx"     : c1,
+                    "c2_idx"     : c2,
+                    "c3_idx"     : c3,
+                    "sweep_idx"  : bar_idx,
+                    "sfp_level"  : sfp_level,
+                    "sweep_wick" : round(sweep_wick, 8),
+                    "close_price": sweep['close'],
+                    "confirmed"  : True,
+                    "invalidated": False,
+                }
+
+    # ── Bearish SFP: hunts stops ABOVE a key high ──
+    else:
+        # Step 1: Find C1 — a 3-bar swing LOW
+        for c1 in range(bar_idx - 2, search_start, -1):
+            if c1 < 1 or c1 >= len(df) - 1:
+                continue
+            if not (df['low'].iloc[c1] < df['low'].iloc[c1 - 1] and
+                    df['low'].iloc[c1] < df['low'].iloc[c1 + 1]):
+                continue
+
+            # Step 2: Find C2 — the push-up candle right after C1
+            c2 = c1 + 1
+            if c2 >= bar_idx:
+                continue
+
+            sfp_level = df['high'].iloc[c2]  # The KEY level to watch
+
+            # Step 3: C3 must stay BELOW C2's high (strict rule)
+            c3 = c2 + 1
+            if c3 >= bar_idx:
+                continue
+            if df['high'].iloc[c3] >= sfp_level:
+                continue  # C3 broke above C2 — pattern void
+
+            # Step 4: Invalidation check — any close ABOVE level before sweep?
+            invalidated = False
+            for mid in range(c3 + 1, bar_idx):
+                if df['close'].iloc[mid] > sfp_level:
+                    invalidated = True
+                    break
+
+            if invalidated:
+                continue
+
+            # Step 5: MAX_SWEEP_WAIT_BARS expiry
+            if bar_idx - c3 > MAX_SWEEP_WAIT_BARS:
+                continue
+
+            # Step 6: Check the sweep candle at bar_idx
+            sweep = df.iloc[bar_idx]
+            min_wick_distance = sfp_level * MIN_SWEEP_BUFFER_PCT
+            min_close_back    = sfp_level - (sfp_level * SFP_CLOSE_BUFFER_PCT)
+
+            # Wick must go meaningfully above C2 high
+            wick_goes_above = sweep['high'] > (sfp_level + min_wick_distance)
+            # Candle must close firmly BELOW the SFP level
+            closes_below    = sweep['close'] < min_close_back
+
+            if wick_goes_above and closes_below:
+                sweep_wick = sweep['high'] - sfp_level  # how far wick went beyond
+                return {
+                    "type"       : "bearish",
+                    "c1_idx"     : c1,
+                    "c2_idx"     : c2,
+                    "c3_idx"     : c3,
+                    "sweep_idx"  : bar_idx,
+                    "sfp_level"  : sfp_level,
+                    "sweep_wick" : round(sweep_wick, 8),
+                    "close_price": sweep['close'],
+                    "confirmed"  : True,
+                    "invalidated": False,
+                }
+
+    return None  # No valid SFP found at this bar
+
+
+def find_latest_sfp(
+    df: pd.DataFrame,
+    is_long: bool,
+    lookback: int = 60,
+    buffer: float = PROTECTED_SWING_BUFFER
+):
+    """
+    TASK 1 — Find the most recent confirmed 3-candle SFP.
+    CHANGED: Now uses detect_sfp_pattern() (the strict 3-candle
+    system) instead of the old single-candle wick check.
+
+    WHY: The old logic just looked for any wick past a swing level.
+    The new system requires C1 → C2 → C3 → Sweep structure,
+    which filters out random wicks and false breakouts.
+
+    Returns:
+        (wick_price: float, timestamp: pd.Timestamp) or None if
+        no valid 3-candle SFP was found within the lookback window.
+    """
+    if len(df) < 6:
+        return None
+
+    # Search backwards from the most recent bar within the lookback
+    search_end   = len(df) - 1
+    search_start = max(5, len(df) - lookback)
+
+    for i in range(search_end, search_start - 1, -1):
+        # Try to find a completed SFP with the sweep candle at bar i
+        result = detect_sfp_pattern(df, i, is_long)
+        if result is not None and result["confirmed"]:
+            # Apply buffer so SL sits just beyond the sweep wick
+            if is_long:
+                # SL goes just below the sweep candle's wick (C2 low with buffer)
+                wick_price = result["sfp_level"] * (1.0 - buffer)
+            else:
+                # SL goes just above the sweep candle's wick (C2 high with buffer)
+                wick_price = result["sfp_level"] * (1.0 + buffer)
+
+            sfp_timestamp = df.index[result["sweep_idx"]]
+            return (wick_price, sfp_timestamp)
+
+    return None  # No SFP found in lookback window
 
 
 def check_confluence(fvg_top, fvg_btm, ob_high, ob_low) -> bool:
@@ -234,7 +464,10 @@ def check_confluence(fvg_top, fvg_btm, ob_high, ob_low) -> bool:
 def get_hourly_bias(df_bias: pd.DataFrame) -> pd.DataFrame:
     """
     FVG/Sweep sets PENDING bias. Confirmed by momentum candle.
-    Returns DataFrame with columns: 'bias' (int) and 'bias_reason' (str).
+    
+    IMPROVED:
+    - Added Invalidation: If price breaks the signal's high/low before entry, bias is killed.
+    - Added Rejection Check: SFP must show some rejection (not a massive trend candle).
     """
     fvgs = calc_fvgs(df_bias)
     sweeps = get_liquidity_sweeps(df_bias)
@@ -251,47 +484,81 @@ def get_hourly_bias(df_bias: pd.DataFrame) -> pd.DataFrame:
 
     body = (df_bias['close'] - df_bias['open']).abs()
     avg_body = body.rolling(10).mean()
-    mom_bull = (df_bias['close'] > df_bias['open']) & (body > avg_body)
-    mom_bear = (df_bias['close'] < df_bias['open']) & (body > avg_body)
+    
+    # Simple EMA for trend filter
+    ema = df_bias['close'].ewm(span=20, adjust=False).mean()
+
+    mom_bull = (df_bias['close'] > df_bias['open']) & (body > avg_body * 0.5)
+    mom_bear = (df_bias['close'] < df_bias['open']) & (body > avg_body * 0.5)
 
     active_bias = 0
     active_reason = ""
     signal_age = 0
     pending_signal = 0
     pending_reason = ""
+    invalidation_level = None
+
+    # Infer timeframe from index difference for better logging
+    tf_str = ""
+    if len(df_bias) > 1:
+        diff = df_bias.index[1] - df_bias.index[0]
+        if diff == pd.Timedelta(hours=4): tf_str = "[4H] "
+        elif diff == pd.Timedelta(hours=1): tf_str = "[1H] "
+        elif diff == pd.Timedelta(minutes=15): tf_str = "[15M] "
+        elif diff == pd.Timedelta(minutes=5): tf_str = "[5M] "
+        elif diff == pd.Timedelta(days=1): tf_str = "[1D] "
 
     for i in range(len(df_bias)):
         ts = df_bias.index[i].strftime("%Y-%m-%d %H:%M")
+        cur_close = df_bias['close'].iloc[i]
+        cur_high = df_bias['high'].iloc[i]
+        cur_low = df_bias['low'].iloc[i]
 
-        # Check for new signals (FVG or Sweep)
+        # ── INVALIDATION CHECK ──
+        # If we have an active bias but price breaks the structural level, neutralize it.
+        if active_bias == 1 and invalidation_level and cur_low < invalidation_level:
+            active_bias = 0
+            active_reason = ""
+            invalidation_level = None
+        elif active_bias == -1 and invalidation_level and cur_high > invalidation_level:
+            active_bias = 0
+            active_reason = ""
+            invalidation_level = None
+
+        # ── NEW SIGNAL DETECTION ──
         if bull_fvg.iloc[i]:
             pending_signal = 1
-            pending_reason = f"Bull FVG @ {ts}"
+            pending_reason = f"Bull FVG {tf_str}@ {ts}"
             signal_age = 0
             active_bias = 0
-            active_reason = ""
+            invalidation_level = df_bias['low'].iloc[i-2] if i > 1 else None # Origin of FVG
         elif bull_sweep.iloc[i]:
-            pending_signal = 1
-            pending_reason = f"Bull Sweep @ {ts}"
-            signal_age = 0
-            active_bias = 0
-            active_reason = ""
+            # Rejection check: candle shouldn't be a massive bearish trend candle
+            if df_bias['close'].iloc[i] > df_bias['low'].iloc[i] + (body.iloc[i] * 0.2):
+                pending_signal = 1
+                pending_reason = f"Bull Sweep {tf_str}@ {ts}"
+                signal_age = 0
+                active_bias = 0
+                invalidation_level = cur_low
         elif bear_fvg.iloc[i]:
             pending_signal = -1
-            pending_reason = f"Bear FVG @ {ts}"
+            pending_reason = f"Bear FVG {tf_str}@ {ts}"
             signal_age = 0
             active_bias = 0
-            active_reason = ""
+            invalidation_level = df_bias['high'].iloc[i-2] if i > 1 else None
         elif bear_sweep.iloc[i]:
-            pending_signal = -1
-            pending_reason = f"Bear Sweep @ {ts}"
-            signal_age = 0
-            active_bias = 0
-            active_reason = ""
+            # Rejection check: candle shouldn't be a massive bullish trend candle
+            if df_bias['close'].iloc[i] < df_bias['high'].iloc[i] - (body.iloc[i] * 0.2):
+                pending_signal = -1
+                pending_reason = f"Bear Sweep {tf_str}@ {ts}"
+                signal_age = 0
+                active_bias = 0
+                invalidation_level = cur_high
 
-        # Confirm pending signals with momentum
+        # ── CONFIRMATION LOGIC ──
         if pending_signal == 1:
-            if mom_bull.iloc[i]:
+            # Trend Filter: Only allow Bullish shift if not suppressed by heavy bearish EMA
+            if mom_bull.iloc[i] and cur_close > ema.iloc[i] * 0.99:
                 active_bias = 1
                 active_reason = f"Bullish ({pending_reason}, confirmed @ {ts})"
                 pending_signal = 0
@@ -301,7 +568,8 @@ def get_hourly_bias(df_bias: pd.DataFrame) -> pd.DataFrame:
                     pending_signal = 0
                     pending_reason = ""
         elif pending_signal == -1:
-            if mom_bear.iloc[i]:
+            # Trend Filter: Only allow Bearish shift if not suppressed by heavy bullish EMA
+            if mom_bear.iloc[i] and cur_close < ema.iloc[i] * 1.01:
                 active_bias = -1
                 active_reason = f"Bearish ({pending_reason}, confirmed @ {ts})"
                 pending_signal = 0
@@ -311,8 +579,8 @@ def get_hourly_bias(df_bias: pd.DataFrame) -> pd.DataFrame:
                     pending_signal = 0
                     pending_reason = ""
 
-        bias_df.iloc[i, 0] = active_bias          # bias column
-        bias_df.iloc[i, 1] = active_reason         # bias_reason column
+        bias_df.iloc[i, 0] = active_bias
+        bias_df.iloc[i, 1] = active_reason
 
     return bias_df
 
@@ -586,6 +854,21 @@ def simulate_trades(df_ltf: pd.DataFrame, df_bias: pd.DataFrame,
         # ── Premium/Discount filter ──
         pd_reason = ""
         if pd_arr:
+            # 1. Multi-Timeframe HTF Range Filter (Prevent TF Misalignment)
+            if df_htf is not None:
+                htf_slice = df_htf[df_htf.index <= timestamp]
+                if len(htf_slice) >= 40:
+                    recent_htf = htf_slice.tail(40)
+                    htf_high = recent_htf['high'].max()
+                    htf_low = recent_htf['low'].min()
+                    htf_mid = (htf_high + htf_low) / 2
+                    
+                    if is_bull and row['close'] > htf_mid:
+                        continue
+                    elif not is_bull and row['close'] < htf_mid:
+                        continue
+            
+            # 2. Local LTF Range Filter
             lookback = min(200, i)
             hi = df_ltf['high'].iloc[max(0, i - lookback):i].max()
             lo = df_ltf['low'].iloc[max(0, i - lookback):i].min()
@@ -598,36 +881,50 @@ def simulate_trades(df_ltf: pd.DataFrame, df_bias: pd.DataFrame,
             pd_reason = f" | Zone: {zone}"
         funnel["Premium/Discount"] += 1
 
-        # ── Calculate entry, stop, target ──
-        entry    = row['close']
+        # ───────────────────────────────────────────────────────
+        # NESTED SFP STOP-LOSS (mirrors live trader logic)
+        # Priority: LTF SFP > HTF SFP > FVG boundary fallback
+        # Slices are clamped to current bar to prevent look-ahead.
+        # ───────────────────────────────────────────────────────
+        entry    = row['close']          # LTF close at the moment of FVG touch
         fvg_size = abs(fvg_top - fvg_btm)
 
-        # --- Protected Swing SL ---
-        # Try to anchor SL below the last structural swing low/high.
-        # This gives the trade room to breathe versus the FVG-boundary SL.
-        swing_sl = find_protected_swing(df_ltf, i, is_bull)
+        # Clamp each df to the current bar (no look-ahead)
+        bias_slice = df_bias[df_bias.index <= timestamp]
+        ltf_slice  = df_ltf.iloc[:i + 1]
+
+        htf_sfp = find_latest_sfp(bias_slice, is_long=is_bull, lookback=96)
+        ltf_sfp = find_latest_sfp(ltf_slice,  is_long=is_bull, lookback=100)
+
+        stop    = None
+        sl_type = "fvg_boundary"
+
+        if htf_sfp:
+            htf_sl_price, htf_sl_time = htf_sfp
+            stop    = htf_sl_price
+            sl_type = "htf_sfp"
+
+            if ltf_sfp:
+                ltf_sl_price, ltf_sl_time = ltf_sfp
+                if ltf_sl_time > htf_sl_time:   # LTF sweep is more recent → tighter SL
+                    stop    = ltf_sl_price
+                    sl_type = "ltf_sfp"
+
+        if stop is None:                        # No SFP found → boundary fallback
+            stop    = fvg_btm * 0.999 if is_bull else fvg_top * 1.001
+            sl_type = "fvg_boundary"
 
         if is_bull:
-            if swing_sl is not None and swing_sl < fvg_btm:
-                # Structural swing is below the FVG bottom — great protection
-                stop = swing_sl
-            else:
-                # No qualifying swing found, fall back: 1% below FVG bottom
-                stop = fvg_btm * 0.999
             risk   = entry - stop
             target = entry + (risk * RISK_REWARD)
         else:
-            if swing_sl is not None and swing_sl > fvg_top:
-                stop = swing_sl
-            else:
-                stop = fvg_top * 1.001
             risk   = stop - entry
             target = entry - (risk * RISK_REWARD)
 
         # ── Validate risk ──
         if risk <= 0:
             continue
-        if risk / entry > 0.03:   # cap: never risk more than 3% from entry
+        if risk / entry > MAX_STOP_DISTANCE:    # discard low-RR setups (>3.5%)
             continue
         funnel["Valid SL"] += 1
 
@@ -640,6 +937,7 @@ def simulate_trades(df_ltf: pd.DataFrame, df_bias: pd.DataFrame,
             f"HTF: {htf_reason}{htf_ob_reason} | "
             f"LTF: {TF_ENTRY} {ltf_reason_detail} | "
             f"{direction_str} @ {entry:.2f} | "
+            f"SL: {sl_type} | "
             f"Regime: {regime}{pd_reason}"
         )
 
@@ -648,7 +946,7 @@ def simulate_trades(df_ltf: pd.DataFrame, df_bias: pd.DataFrame,
         current_trade = {
             "symbol": sym, "model": "cisd", "regime": regime, "setup_tier": setup_tier,
             "bias_type": "bullish" if is_bull else "bearish",
-            "reason": reason,
+            "reason": reason, "sl_type": sl_type,
             "fvg_size": round(fvg_size, 4),
             "fvg_size_pct": round((fvg_size / entry) * 100, 4),
             "Entry Time": timestamp.strftime("%Y-%m-%d %H:%M"),
