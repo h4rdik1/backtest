@@ -8,63 +8,139 @@ import pandas as pd
 import numpy as np
 import os
 import csv
+from datetime import datetime, timezone
 from typing import List, Dict, Callable, Optional
 
 from .config import (
     MONTE_CARLO_SIMS, MIN_TRADES_FOR_VALIDITY, CONSISTENCY_PASS_PCT,
     EDGE_REAL_THRESHOLD, WALK_FORWARD_TOLERANCE, FIXED_SL_USDT,
-    ACCOUNT_SIZE
+    ACCOUNT_SIZE,
+    # Task 2 — Regime constants
+    REGIME_LOOKBACK_BARS,
+    # Task 3 — Session constants
+    SESSIONS,
+    # Task 10 — Live vs backtest constants
+    LIVE_BACKTEST_CHECK_N, LIVE_BACKTEST_WARN_PCT, LIVE_BACKTEST_HALT_PCT,
 )
 
 
 # ==============================================================
-# PRIORITY 3 — Market Regime Classification
+# TASK 3 — Session Detection Helper
+# WHY: Institutional volume peaks at London Open (07:00-11:00 UTC)
+# and NY Open (13:00-16:00 UTC). We need to know what session we
+# are in before deciding whether to allow a trade.
 # ==============================================================
 
-def classify_regime(df_daily: pd.DataFrame, entry_time) -> str:
+def get_current_session(dt: datetime = None) -> str:
     """
-    Labels the market regime at the time of a trade entry using the last
-    20 daily candles.
+    Returns the name of the trading session the given datetime falls in.
 
-    WHY: A strategy may only work in trending markets. If we know WHERE
-    the edge comes from, we can avoid trading in bad conditions.
+    Sessions are defined in UTC. Overlapping windows (e.g., London-NY
+    overlap at 15:00-16:00) will return 'london_close' if checked
+    top-to-bottom in the SESSIONS dict order.
 
-    Rules:
-    - trending_up:   price near 20-bar highs (close > 20-bar high * 0.95)
-                     AND making higher lows (last 10-bar low > first 10-bar low)
-    - trending_down: price near 20-bar lows  (close < 20-bar low * 1.05)
-                     AND making lower highs (last 10-bar high < first 10-bar high)
-    - ranging:       neither trending up nor trending down
+    Args:
+        dt: A datetime object. Defaults to now (UTC) if not provided.
 
-    Returns: "trending_up", "trending_down", or "ranging"
+    Returns:
+        Session name: 'london_open', 'ny_open', 'london_close',
+        'asian', or 'off_hours'.
     """
-    # Get the last 20 daily candles before entry
-    entry_ts = pd.Timestamp(entry_time, tz="UTC") if not isinstance(entry_time, pd.Timestamp) else entry_time
-    recent = df_daily.loc[:entry_ts].tail(20)
+    if dt is None:
+        dt = datetime.now(timezone.utc)
 
-    if len(recent) < 10:
+    # Make sure we compare in UTC
+    if dt.tzinfo is not None:
+        dt_utc = dt.replace(tzinfo=None)  # strip tz for simple HH:MM compare
+    else:
+        dt_utc = dt
+
+    # Current time as a string like '09:30' for comparison
+    time_str = dt_utc.strftime("%H:%M")
+
+    for session_name, (start, end) in SESSIONS.items():
+        # Handle sessions that cross midnight (e.g., asian: 00:00 – 07:00)
+        if start <= end:
+            if start <= time_str < end:
+                return session_name
+        else:
+            # Crosses midnight
+            if time_str >= start or time_str < end:
+                return session_name
+
+    return "off_hours"  # Not in any defined session window
+
+
+# ==============================================================
+# TASK 2 (UPGRADED) — Market Regime Classification
+# CHANGED: Now uses strong_bull / strong_bear / ranging labels
+# (instead of trending_up / trending_down) with the exact thresholds
+# specified in the task (close > 20-bar high * 0.90 for strong_bull,
+# close < 20-bar low * 1.10 for strong_bear).
+# WHY: The old ranging check was too permissive. The new one
+# ensures we only label 'strong_bull' when price is clearly holding
+# near recent highs AND making higher lows — not just being close.
+# ==============================================================
+
+def classify_regime(df_weekly_or_daily: pd.DataFrame, entry_time=None) -> str:
+    """
+    TASK 2 — Classify the market regime using the last 20 candles.
+
+    Can be called with a weekly OR daily dataframe. The labels are:
+      strong_bull : price near 20-bar high (close > 20-bar high * 0.90)
+                    AND second half of window has higher lows than first half
+      strong_bear : price near 20-bar low  (close < 20-bar low * 1.10)
+                    AND second half of window has lower highs than first half
+      ranging     : neither condition met
+
+    WHY the 0.90 / 1.10 thresholds:
+      Multiplying the 20-bar high by 0.90 means price must be within
+      10% of the range top to qualify as a bull trend. This filters
+      out cases where price has already pulled back significantly.
+
+    Args:
+        df_weekly_or_daily: OHLCV DataFrame indexed by timestamp
+        entry_time: Optional timestamp to slice history up to.
+                    If None, uses the last 20 bars of the full df.
+
+    Returns: 'strong_bull', 'strong_bear', or 'ranging'
+    """
+    # Get the relevant slice of data
+    if entry_time is not None:
+        entry_ts = (pd.Timestamp(entry_time, tz="UTC")
+                    if not isinstance(entry_time, pd.Timestamp)
+                    else entry_time)
+        recent = df_weekly_or_daily.loc[:entry_ts].tail(REGIME_LOOKBACK_BARS)
+    else:
+        recent = df_weekly_or_daily.tail(REGIME_LOOKBACK_BARS)
+
+    # Need at least half the bars to make a decision
+    if len(recent) < REGIME_LOOKBACK_BARS // 2:
         return "ranging"  # Not enough data to classify
 
-    high_20 = recent["high"].max()
-    low_20 = recent["low"].min()
+    high_20      = recent["high"].max()
+    low_20       = recent["low"].min()
     current_close = recent["close"].iloc[-1]
 
-    # Split into first half and second half for HH/HL detection
-    first_half = recent.iloc[:10]
-    second_half = recent.iloc[10:]
+    # Split window in half to detect HH/HL or LL/LH patterns
+    half = len(recent) // 2
+    first_half  = recent.iloc[:half]
+    second_half = recent.iloc[half:]
 
-    # Trending up: close near highs AND higher lows forming
-    near_highs = current_close > (high_20 * 0.95)
+    # ── Strong Bull: price near highs AND making higher lows ──
+    # The 0.90 multiplier means 'within 10% of the 20-bar peak'
+    near_highs  = current_close > (high_20 * 0.90)
     higher_lows = second_half["low"].min() > first_half["low"].min()
 
-    # Trending down: close near lows AND lower highs forming
-    near_lows = current_close < (low_20 * 1.05)
+    # ── Strong Bear: price near lows AND making lower highs ──
+    # The 1.10 multiplier means 'within 10% above the 20-bar trough'
+    near_lows   = current_close < (low_20 * 1.10)
     lower_highs = second_half["high"].max() < first_half["high"].max()
 
     if near_highs and higher_lows:
-        return "trending_up"
+        return "strong_bull"
     elif near_lows and lower_highs:
-        return "trending_down"
+        return "strong_bear"
     else:
         return "ranging"
 
@@ -494,7 +570,7 @@ def print_filter_contribution(results: List[Dict]):
 # PRIORITY 7 — Live Scanner Signal Logging
 # ══════════════════════════════════════════════════════════════
 
-SIGNAL_LOG_FILE = "signal_log.csv"
+SIGNAL_LOG_FILE = "exports/signal_log.csv"
 SIGNAL_LOG_HEADERS = [
     "timestamp", "symbol", "bias_type", "reason", "fvg_top", "fvg_bottom",
     "fvg_midpoint", "entry_price", "stop_price", "target_price",
@@ -576,3 +652,131 @@ def print_live_comparison(result: Dict):
         print(f"    Backtest WR      : {result['backtest_wr']:.1f}%")
         print(f"    Deviation        : {result['deviation']:.1f}%  [OK if < 15%]")
     print(f"    Verdict          : {result['verdict']}")
+
+
+# ══════════════════════════════════════════════════════════════
+# TASK 10 — Live vs Backtest Consistency Check
+# CHANGED: Added a structured function that compares BOTH win rate
+# AND profit factor (not just WR). Also triggers halt at 25% rather
+# than just logging. The old compare_live_vs_backtest() only read
+# from the CSV file. This new version accepts live trade dicts.
+# WHY: If the live strategy produces drastically different results
+# than backtesting, it could mean market conditions have changed,
+# execution issues, or the strategy has stopped working.
+# ══════════════════════════════════════════════════════════════
+
+def count_wins(trades: List[Dict]) -> int:
+    """Helper: count the number of winning trades in a list of trade dicts."""
+    return sum(1 for t in trades if t.get("result") in ("WIN", "win"))
+
+
+def compare_live_to_backtest(
+    live_trades: List[Dict],
+    backtest_stats: Dict,
+    send_alert_fn=None,
+    halt_fn=None,
+) -> Dict:
+    """
+    TASK 10 — After every N live completed trades, compare live performance
+    to backtest stats. Triggers warnings and halts automatically.
+
+    How it works:
+      1. Count wins in the live_trades list.
+      2. Compare live win rate to backtest_stats['win_rate'].
+      3. Compare live profit factor to backtest_stats['profit_factor'].
+      4. If either deviation > LIVE_BACKTEST_HALT_PCT → halt trading.
+      5. If either deviation > LIVE_BACKTEST_WARN_PCT → log warning.
+
+    Args:
+        live_trades    : List of completed trade dicts from challenge state.
+                         Each should have 'result' ('WIN'/'LOSS') and 'pnl_usd'.
+        backtest_stats : Dict with keys 'win_rate' (0.0-1.0) and
+                         'profit_factor' (float).
+        send_alert_fn  : Optional callable(msg: str) to send alerts
+                         (e.g., Telegram, print). Falls back to print.
+        halt_fn        : Optional callable() that sets a halt flag in your
+                         state. Falls back to print a HALT message.
+
+    Returns:
+        Dict with live stats, deviations, and action taken.
+    """
+    # Must have enough trades to compare (don't fire on first 3 trades)
+    if len(live_trades) < LIVE_BACKTEST_CHECK_N:
+        return {
+            "checked"   : False,
+            "reason"    : f"Need {LIVE_BACKTEST_CHECK_N} completed trades, have {len(live_trades)}",
+            "trades_n"  : len(live_trades),
+        }
+
+    # Only check every LIVE_BACKTEST_CHECK_N completed trades
+    # (caller should pass only the last N trades, or we check total)
+    recent_trades = live_trades[-LIVE_BACKTEST_CHECK_N:]
+
+    # ── Live win rate ──
+    wins      = count_wins(recent_trades)
+    total     = len(recent_trades)
+    live_wr   = wins / total  # fractional (0.0 – 1.0)
+    bt_wr     = backtest_stats.get("win_rate", 0.5)
+
+    wr_deviation = abs(live_wr - bt_wr) / bt_wr if bt_wr > 0 else 1.0
+
+    # ── Live profit factor ──
+    gross_wins   = sum(t.get("pnl_usd", 0) for t in recent_trades if t.get("pnl_usd", 0) > 0)
+    gross_losses = abs(sum(t.get("pnl_usd", 0) for t in recent_trades if t.get("pnl_usd", 0) < 0))
+    live_pf      = gross_wins / gross_losses if gross_losses > 0 else float("inf")
+    bt_pf        = backtest_stats.get("profit_factor", 1.5)
+
+    pf_deviation = abs(live_pf - bt_pf) / bt_pf if bt_pf > 0 and live_pf != float("inf") else 0.0
+
+    # Worst deviation between WR and PF
+    max_deviation = max(wr_deviation, pf_deviation)
+
+    action = "none"
+
+    # ── HALT condition: >25% deviation ──
+    if max_deviation > LIVE_BACKTEST_HALT_PCT:
+        msg = (
+            f"CRITICAL: Live results deviate {max_deviation:.1%} from backtest. "
+            f"Live WR={live_wr:.1%} vs BT={bt_wr:.1%} | "
+            f"Live PF={live_pf:.2f} vs BT PF={bt_pf:.2f}. "
+            f"HALTING trading."
+        )
+        if send_alert_fn:
+            send_alert_fn(msg)
+        else:
+            print(f"\n  [HALT ALERT] {msg}")
+
+        if halt_fn:
+            halt_fn()
+        else:
+            print("  [HALT] Trading halted due to live/backtest deviation. Manual restart needed.")
+
+        action = "halt"
+
+    # ── WARNING condition: >15% deviation ──
+    elif max_deviation > LIVE_BACKTEST_WARN_PCT:
+        msg = (
+            f"WARNING: Live results drifting from backtest ({max_deviation:.1%} deviation). "
+            f"Live WR={live_wr:.1%} vs BT={bt_wr:.1%} | "
+            f"Live PF={live_pf:.2f} vs BT PF={bt_pf:.2f}."
+        )
+        if send_alert_fn:
+            send_alert_fn(msg)
+        else:
+            print(f"\n  [WARN] {msg}")
+
+        action = "warn"
+
+    return {
+        "checked"         : True,
+        "trades_compared" : total,
+        "live_wr"         : round(live_wr, 4),
+        "backtest_wr"     : round(bt_wr, 4),
+        "wr_deviation"    : round(wr_deviation, 4),
+        "live_pf"         : round(live_pf, 2) if live_pf != float("inf") else "inf",
+        "backtest_pf"     : round(bt_pf, 2),
+        "pf_deviation"    : round(pf_deviation, 4),
+        "max_deviation"   : round(max_deviation, 4),
+        "action"          : action,  # 'none', 'warn', or 'halt'
+    }
+

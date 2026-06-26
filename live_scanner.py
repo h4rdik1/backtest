@@ -1,8 +1,9 @@
 import os
+import sys
 import time
 import argparse
 from datetime import datetime
-from core.config import LIVE_WATCHLIST, ACTIVE_CHAIN, ALIGNMENTS, chain_label, format_price
+from core.config import LIVE_WATCHLIST, ACTIVE_CHAIN, ALIGNMENTS, chain_label, format_price, LIVE_SCAN_INTERVAL
 import challenge_trader
 
 def get_signal_for_symbol(symbol: str, chain_name: str, exchange_id: str = "binance"):
@@ -42,33 +43,80 @@ def print_signal(sig: dict):
     print(f"      Entry Anchor:   {sig['anchor_type']} (zone: {format_price(sig['fvg_zone_low'])} - {format_price(sig['fvg_zone_high'])})")
 
     meta = sig.get('metadata', {})
+    disp = meta.get('displacement_strength', 1.0)
     if meta:
-        print(f"      Quality Meter:  Displacement Strength: {meta.get('displacement_strength')}x (High > 1.5)")
+        print(f"      Quality Meter:  Displacement Strength: {disp}x (High > 1.5)")
 
-    # SL anchor label — tells you if SL has structural backing or is just FVG edge
+    # SL anchor label
     sl_type = sig.get('sl_type', 'fvg_boundary')
-    if sl_type == 'protected_swing':
+    if sl_type == 'htf_sfp':
+        sl_label = "🛡️  HTF SFP (Strong Structural Floor)"
+    elif sl_type == 'ltf_sfp':
+        sl_label = "🔥  LTF SFP (Tight/High-RR Protection)"
+    elif sl_type == 'protected_swing':
         sl_label = "🛡️  Protected Swing"
     else:
-        sl_label = "⚠️  FVG Boundary (fallback — no swing found)"
+        sl_label = "⚠️  FVG Boundary (fallback — no SFP/swing found)"
+
+    print(f"\n   [FULL LOGIC BREAKDOWN]")
+    
+    # 1. Context Explanation
+    regime = sig['regime']
+    if regime == 'trending_up':
+        ctx = "The HTF is in a strong UP-TREND. We prioritize LONGs as institutional flow is bullish."
+    elif regime == 'trending_down':
+        ctx = "The HTF is in a strong DOWN-TREND. We prioritize SHORTs as institutional flow is bearish."
+    else:
+        ctx = "The HTF is RANGING. We are looking for mean-reversion or liquidity sweeps from the edges."
+    print(f"      1. Context: {ctx}")
+
+    # 2. Bias Explanation
+    bias_desc = sig['bias_reason'].lower()
+    print(f"      2. Bias:    Our directional bias shifted to {dire} because of a {bias_desc}.")
+
+    # 3. Entry Explanation
+    anc = sig['anchor_type']
+    if anc == 'CONFLUENCE':
+        ent_expl = f"We have high-confluence between an FVG and an Order Block. This is an 'A++' high-probability zone."
+    elif anc == 'FVG':
+        ent_expl = f"Institutional displacement created a Fair Value Gap. We enter at the 'Equilibrium' (midpoint)."
+    else:
+        ent_expl = f"Entry is based on an Order Block where institutional buying/selling was previously concentrated."
+    print(f"      3. Entry:   {ent_expl} (Strength: {disp}x)")
+
+    # 4. Stop-Loss Explanation
+    if 'sfp' in sl_type:
+        stop_expl = f"SL is anchored to a Structural Sweep ({sl_type.upper()}). Price must break logic to hit our stop."
+    else:
+        stop_expl = "SL is at the zone boundary. This is a tighter risk setup with higher RR but lower structural protection."
+    print(f"      4. Risk:    {stop_expl}")
+
+    # 5. Setup Tier Explanation
+    tier = sig['setup_tier']
+    if tier == 'A++':
+        tier_expl = "A++ (Ultimate Confluence). This setup aligns an FVG with a fresh LTF Order Block. Highest probability."
+    elif tier == 'A':
+        tier_expl = "A (High Quality). The LTF entry zone has direct confluence with an HTF Order Block."
+    else:
+        tier_expl = "B (Standard). A valid SMC setup, but lacking secondary structural confluence from HTF OBs."
+    print(f"      5. Tier:    {tier_expl}")
 
     if not is_active:
-        print(f"      Entry Signal:   PENDING - Waiting for price to tap entry @ {format_price(ent)}")
-        print(f"      SL Anchor:      {sl_label} @ {format_price(sl)}")
-        print(f"      Setup Tier:     {sig['setup_tier']}")
-        print(f"      Current Price:  {format_price(cur)}")
+        print(f"\n      [STATUS] PENDING - Waiting for price to tap entry @ {format_price(ent)}")
+
+        print(f"      [LAYOUT] Target: {format_price(tp)} (2.0R) | Stop: {format_price(sl)}")
     else:
-        print(f"      Entry Signal:   ACTIVE - Price within zone")
-        print(f"      Risk Layout:    Entry ~{format_price(ent)} | SL: {format_price(sl)} | TP: {format_price(tp)} (2R)")
-        print(f"      SL Anchor:      {sl_label}")
-        print(f"      Setup Tier:     {sig['setup_tier']}")
-        print(f"      Current Price:  {format_price(cur)}")
+        print(f"\n      [STATUS] ACTIVE - Price is currently within the execution zone.")
+        print(f"      [LAYOUT] Entry ~{format_price(ent)} | SL: {format_price(sl)} | TP: {format_price(tp)} (2R)")
+    
+    print(f"      [PRICE]  Current: {format_price(cur)}")
+
 
 
 def run_scanner():
     parser = argparse.ArgumentParser()
     parser.add_argument("--symbols", nargs="+", default=LIVE_WATCHLIST)
-    parser.add_argument("--interval", type=int, default=60, help="Scan interval in seconds")
+    parser.add_argument("--interval", type=int, default=LIVE_SCAN_INTERVAL, help="Scan interval in seconds")
     args = parser.parse_args()
 
     # The chains we want to scan (from core config)
@@ -135,5 +183,12 @@ def run_scanner():
         time.sleep(args.interval)
 
 if __name__ == "__main__":
+    if sys.stdout.encoding.lower() != 'utf-8':
+        try:
+            sys.stdout.reconfigure(encoding='utf-8')
+        except AttributeError:
+            # Fallback for older python versions
+            import io
+            sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
     run_scanner()
 

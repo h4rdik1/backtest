@@ -154,6 +154,30 @@ Before submitting any trade entry, run through this checklist:
 
 ---
 
+## Range & Structure Marking SOP
+
+To maintain consistency and avoid bias, always follow these rules when marking trading ranges:
+
+### 1. The Leg of Displacement (SOP 1)
+Do not draw ranges in choppy, sideways environments. A range is only established after a **displacement leg**—an aggressive move that breaks previous structure (BOS or CHoCH/MSB).
+* **Range Low (0):** The absolute lowest wick point that initiated the upward displacement.
+* **Range High (1):** The absolute highest wick point reached before a clear pullback (defined as at least two consecutive candles closing in the opposite direction).
+
+### 2. The 3-Candle Swing Confirmation (SOP 2)
+A swing high/low must meet structural validity to be used as a range boundary:
+* **Swing Low:** A candle low flanked by a higher low on the left and a higher low on the right.
+* **Swing High:** A candle high flanked by a lower high on the left and a lower high on the right.
+
+### 3. Breaks vs. Sweeps (SOP 3)
+* **BOS (Break of Structure):** A candle body closes *outside* the range boundary. The current range is now invalidated. Wait for a new displacement leg.
+* **Sweep / SFP (Swing Failure Pattern):** A wick breaks the boundary but the candle closes *back inside* the range. The range remains active, and this is a high-probability reversal signal.
+
+### 4. Premium vs. Discount (SOP 4)
+* **Discount (< 0.5 Equilibrium):** The only zone where **Longs** are permitted.
+* **Premium (> 0.5 Equilibrium):** The only zone where **Shorts** are permitted.
+
+---
+
 ## Tier Quick-Reference
 
 | Tier | HTF Sweep | HTF + LTF Aligned | LTF FVG+OB Confluence | LTF Sweep | Win Rate (Backtest) | Challenge Eligible |

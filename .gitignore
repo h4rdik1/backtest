@@ -32,3 +32,8 @@ trade_log_*.csv
 # System
 .DS_Store
 Thumbs.db
+
+# Private & Temporary
+.env
+archive/
+scratch/
