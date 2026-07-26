@@ -29,15 +29,15 @@ LIVE_SCAN_INTERVAL        = 900       # Scan interval in seconds (15 minutes)
 #   Monthly → Daily, Weekly → H4, Daily → H1, H4 → M15, H1 → M5
 # ---------------------------------------------------
 ALIGNMENTS = {
-    "intraday":  {"context": "4h",  "bias": "1h",  "entry": "15m"},  # 4H -> 1H -> 15M (4h/m15)
-    "scalp":     {"context": "1h",  "bias": "15m", "entry": "5m"},   # 1H -> 15M -> 5M  (1h/m5)
+    "swing":     {"context": "1w",  "bias": "4h",  "entry": "15m"},  # Weekly -> 4H -> 15M (W/m15)
+    "intraday":  {"context": "1d",  "bias": "1h",  "entry": "5m"},   # Daily -> 1H -> 5M (D/m5)
 }
 
 # ── RETIRED ALIGNMENTS (for position management of existing trades) ──
 RETIRED_ALIGNMENTS = {
-    "weekly":    {"context": "1w",  "bias": "4h",  "entry": "15m"},
-    "daily":     {"context": "1d",  "bias": "1h",  "entry": "5m"},
-    "macro":     {"context": "1M",  "bias": "1d",  "entry": "4h"},
+    "intraday_legacy": {"context": "4h",  "bias": "1h",  "entry": "15m"},  # Legacy intraday
+    "scalp_legacy":     {"context": "1h",  "bias": "15m", "entry": "5m"},   # Legacy scalp
+    "macro":            {"context": "1M",  "bias": "1d",  "entry": "4h"},
 }
 
 ACTIVE_CHAIN              = "intraday"   # <<< Default starting chain
@@ -105,6 +105,7 @@ OB_SWING_LOOKBACK         = 5         # Bars to look for swing point
 # ── PROTECTED SWING SL ──────────────────────────────
 PROTECTED_SWING_LOOKBACK  = 20        # bars to look back for swing high/low
 PROTECTED_SWING_BUFFER    = 0.001     # 0.1% clearance beyond the swing point
+PREFER_HTF_STRUCTURAL_SL  = True      # If True, prioritize HTF SFP stops & use Bias TF for swing SL fallback (avoids LTF shakeouts)
 
 # ── CISD ───────────────────────────────────────────
 CISD_BODY_MULT            = 0.3       # 30% of avg range

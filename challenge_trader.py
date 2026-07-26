@@ -52,6 +52,7 @@ from core.config import (
     MIN_SL_PCT_BTC,
     MIN_SL_PCT_ALTS,
     MAX_STOP_DISTANCE,
+    PREFER_HTF_STRUCTURAL_SL,
     # Task 3 — Sessions
     SESSIONS, SESSION_MIN_TIER,
     # Task 4 — Break-even & trailing
@@ -814,15 +815,26 @@ def scan_for_signal(
         sl_type  = "htf_sfp"
 
         # Check if there is an LTF SFP that formed AFTER the HTF sweep
-        if ltf_sfp:
+        if ltf_sfp and not PREFER_HTF_STRUCTURAL_SL:
             ltf_sl_price, ltf_sl_time = ltf_sfp
             if ltf_sl_time > htf_sl_time:  # only valid if LTF sweep is more recent
                 sl      = ltf_sl_price
                 sl_type = "ltf_sfp"  # tighter stop = higher RR
+    elif ltf_sfp:
+        # Fallback to LTF SFP if no HTF SFP exists at all
+        ltf_sl_price, ltf_sl_time = ltf_sfp
+        sl       = ltf_sl_price
+        sl_type  = "ltf_sfp"
 
     # 4. Fallback: no SFP found — try Protected Swing High/Low, then use FVG boundary
     if sl is None:
-        swing_sl = find_protected_swing(df_ltf_df, last_idx, is_long=is_long, lookback=20)
+        if PREFER_HTF_STRUCTURAL_SL:
+            # Look back 20 bars on the BIAS timeframe (much safer structure than entry TF)
+            swing_sl = find_protected_swing(df_bias_df, len(df_bias_df)-1, is_long=is_long, lookback=20)
+        else:
+            # Fallback to entry TF lookback
+            swing_sl = find_protected_swing(df_ltf_df, last_idx, is_long=is_long, lookback=20)
+
         if swing_sl is not None and not pd.isna(swing_sl):
             sl = swing_sl
             sl_type = "protected_swing"
@@ -1721,6 +1733,9 @@ def main():
 
     try:
         while True:
+            # Reload state to pick up any manual edits (e.g. manual trades)
+            state = load_state()
+            
             print_dashboard(state)
             run_scan(state, chains)
             save_state(state)

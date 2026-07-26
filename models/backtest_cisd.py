@@ -16,7 +16,7 @@ from core.config import (
     TEST_START, DATA_DIR,
     TF_CONTEXT, TF_BIAS, TF_ENTRY, ACTIVE_CHAIN, chain_label,
     PROTECTED_SWING_LOOKBACK, PROTECTED_SWING_BUFFER,
-    MAX_STOP_DISTANCE,
+    MAX_STOP_DISTANCE, PREFER_HTF_STRUCTURAL_SL,
     # Task 1 — SFP constants
     MIN_SWEEP_BUFFER_PCT, MAX_SWEEP_WAIT_BARS, SFP_CLOSE_BUFFER_PCT,
 )
@@ -904,15 +904,31 @@ def simulate_trades(df_ltf: pd.DataFrame, df_bias: pd.DataFrame,
             stop    = htf_sl_price
             sl_type = "htf_sfp"
 
-            if ltf_sfp:
+            if ltf_sfp and not PREFER_HTF_STRUCTURAL_SL:
                 ltf_sl_price, ltf_sl_time = ltf_sfp
                 if ltf_sl_time > htf_sl_time:   # LTF sweep is more recent → tighter SL
                     stop    = ltf_sl_price
                     sl_type = "ltf_sfp"
+        elif ltf_sfp:
+            # Fallback to LTF SFP if no HTF SFP exists at all
+            ltf_sl_price, ltf_sl_time = ltf_sfp
+            stop    = ltf_sl_price
+            sl_type = "ltf_sfp"
 
-        if stop is None:                        # No SFP found → boundary fallback
-            stop    = fvg_btm * 0.999 if is_bull else fvg_top * 1.001
-            sl_type = "fvg_boundary"
+        if stop is None:                        # No SFP found → try Protected Swing High/Low, then use FVG boundary
+            if PREFER_HTF_STRUCTURAL_SL:
+                # Look back 20 bars on the BIAS timeframe (much safer structure than entry TF)
+                swing_sl = find_protected_swing(bias_slice, len(bias_slice)-1, is_long=is_bull, lookback=20)
+            else:
+                # Fallback to entry TF lookback
+                swing_sl = find_protected_swing(ltf_slice, i, is_long=is_bull, lookback=20)
+
+            if swing_sl is not None and not pd.isna(swing_sl):
+                stop    = swing_sl
+                sl_type = "protected_swing"
+            else:
+                stop    = fvg_btm * 0.999 if is_bull else fvg_top * 1.001
+                sl_type = "fvg_boundary"
 
         if is_bull:
             risk   = entry - stop

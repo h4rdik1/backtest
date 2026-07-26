@@ -37,3 +37,12 @@ Thumbs.db
 .env
 archive/
 scratch/
+
+# Runtime exports & state (large logs + sensitive live state)
+exports/
+
+# Cached market data
+data/ohlcv/
+
+# Auto-generated chart images
+images/

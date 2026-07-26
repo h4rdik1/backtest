@@ -2,6 +2,8 @@
 
 This document provides a comprehensive overview of all the available tools and scripts in the repository. You can refer to this list when deciding how to analyze the market, debug a trade, or review performance.
 
+> **Quick Market Check:** `python scratch/market_check.py BTCUSDT 15m 30`
+
 ## Core Trading Scripts (Root Directory)
 
 ### `challenge_trader.py`
@@ -62,4 +64,39 @@ This document provides a comprehensive overview of all the available tools and s
 - **Usage:**
   ```bash
   python tools/view_candles.py
+  ```
+
+---
+
+## Scratch / Utility Scripts (`/scratch` directory)
+
+### `scratch/market_check.py` ⭐ (Primary Manual Analysis Tool)
+- **Purpose:** Centralized, universal market price fetcher and structure analyzer. Works for any Binance symbol on any timeframe. Replaces all per-coin scripts (`get_btc_data.py`, `get_eth_recent.py`, etc.).
+- **What it outputs:**
+  - Current price, period high/low, equilibrium (0.5 of range)
+  - Price zone: PREMIUM / DISCOUNT / EQUILIBRIUM
+  - Biggest displacement candle + strength vs average body
+  - Automatic MSB detection (Higher High / Lower High / Higher Low / Lower Low)
+  - Last 5 swing highs and swing lows with timestamps
+  - All Bull/Bear FVGs detected in the window with exact zones
+  - Last 10 OHLC candles in a clean table
+- **When to use:** Any time you need a quick snapshot of a coin's current price action, structure, and key levels — before entering a trade, checking a live position, or doing a post-mortem.
+- **Usage:**
+  ```bash
+  # Default: BTCUSDT, 15m, last 30 candles
+  python scratch/market_check.py BTCUSDT
+
+  # Custom symbol, interval, and candle count
+  python scratch/market_check.py ETHUSDT 1h 50
+  python scratch/market_check.py SOLUSDT 4h 20
+  python scratch/market_check.py HYPEUSDT 15m 30
+  python scratch/market_check.py BNBUSDT 5m 60
+  ```
+
+### `scratch/scan_now.py`
+- **Purpose:** Instant one-shot scan that runs the full bot logic once across all watchlist symbols and prints any active setups with tier, entry, SL, and TP.
+- **When to use:** Quick check for live setups without running the full `challenge_trader.py` loop.
+- **Usage:**
+  ```bash
+  python scratch/scan_now.py
   ```
