@@ -15,14 +15,23 @@ The framework has **4 tiers** of setup quality. You must correctly identify the 
 
 ## Timeframe Alignment Chains
 
-The system uses three specific "chains." Each chain scans from the macro context down to the entry trigger.
+The system scans from macro structural context down to the micro entry trigger. Each alignment chain represents a top-to-bottom institutional story.
 
-| Chain | Context (Structural Bias) | Bias (Direction) | Entry (Trigger) |
-|-------|--------------------------|-------------------|-----------------|
-| **Weekly** | 1W | 4H | 15M |
-| **Daily** | 1D | 1H | 5M |
+| Chain Name | Context (Structural Range) | Bias (Directional Sweep) | Entry (Trigger & SL) |
+| :--- | :--- | :--- | :--- |
+| **Swing** | Weekly (1W) | 4-Hour (4H) | 15-Minute (15M) |
+| **Intraday** | Daily (1D) | 1-Hour (1H) | 5-Minute (5M) |
 
-> **Rule:** Always read the chart from LEFT to RIGHT and TOP to BOTTOM (HTF → LTF). Never work your way up from the LTF to justify a bias.
+### 🛡️ Understanding the Timeframe Hierarchy (Preventing Mismatch)
+To survive market noise, a trade's risk management must align with the timeframe of its core thesis:
+1. **Context Layer (Structure):** Defines key ranges, order blocks, and premium/discount zones. Tells us *where* institutional interest lies.
+2. **Bias Layer (Direction):** Tells us *when* smart money is actively rejecting a level via Swing Failure Patterns (SFPs) or Fair Value Gaps (FVGs). 
+3. **Entry Layer (Execution):** Fine-tunes the exact entry (e.g. FVG touch or local OB) and timing.
+
+> [!CAUTION]
+> **The Stop-Loss Timeframe Trap:** Do not let a Lower Timeframe (LTF) SFP override the stop-loss of a Higher Timeframe (HTF) setup. If your directional bias is based on the 4H/1H, your Stop Loss must remain anchored to the 4H/1H SFP or swing structure. Shifting your stop to a tight 15M/5M level just because it is "newer" will get you shaken out by minor noise before the macro setup plays out.
+> 
+> **Fallback swing lows/highs** (`protected_swing`) are calculated looking back 20 bars on the **Bias Timeframe** (4H or 1H) rather than the entry timeframe, giving the position a true structural floor (20 hours of structure on Intraday, 80 hours on Swing).
 
 ---
 
