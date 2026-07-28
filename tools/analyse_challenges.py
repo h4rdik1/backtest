@@ -169,10 +169,10 @@ def is_counter(row):
     b = row.get("bias_reason", "")
     r = row.get("regime", "")
     d = row.get("direction", "")
-    if "Bullish" in b and r == "trending_down": return True
-    if "Bullish" in b and d == "SHORT":         return True
-    if "Bearish" in b and r == "trending_up":   return True
-    if "Bearish" in b and d == "LONG":          return True
+    if "Bullish" in b and r in ("strong_bear", "trending_down"): return True
+    if "Bullish" in b and d == "SHORT":                           return True
+    if "Bearish" in b and r in ("strong_bull", "trending_up"):   return True
+    if "Bearish" in b and d == "LONG":                            return True
     return False
 
 combined["is_counter"] = combined.apply(is_counter, axis=1)

@@ -111,9 +111,9 @@ def analyze_symbol(symbol: str):
     elif sfp_1h_bear and sfp_5m_bear:
         reasons.append("Nested SFP confirmed (1H + 5M). High conviction for Short.")
     
-    if regime == "trending_up" and current_price < range_mid:
+    if regime == "strong_bull" and current_price < range_mid:
         reasons.append("Trend alignment: Bullish regime + Discount zone.")
-    elif regime == "trending_down" and current_price > range_mid:
+    elif regime == "strong_bear" and current_price > range_mid:
         reasons.append("Trend alignment: Bearish regime + Premium zone.")
     
     if not reasons:
