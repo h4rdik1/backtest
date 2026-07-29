@@ -62,9 +62,9 @@ def print_signal(sig: dict):
     
     # 1. Context Explanation
     regime = sig['regime']
-    if regime == 'trending_up':
+    if regime == 'strong_bull':
         ctx = "The HTF is in a strong UP-TREND. We prioritize LONGs as institutional flow is bullish."
-    elif regime == 'trending_down':
+    elif regime == 'strong_bear':
         ctx = "The HTF is in a strong DOWN-TREND. We prioritize SHORTs as institutional flow is bearish."
     else:
         ctx = "The HTF is RANGING. We are looking for mean-reversion or liquidity sweeps from the edges."

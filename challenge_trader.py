@@ -430,7 +430,7 @@ def score_setup(signal: Dict) -> int:
 
     # +1 if the market regime is strongly trending (not ranging)
     regime = signal.get("regime", "ranging")
-    if regime in ("strong_bull", "strong_bear", "trending_up", "trending_down"):
+    if regime in ("strong_bull", "strong_bear"):
         score += 1
 
     # +2 if we have a nested LTF SFP (more precise SL anchor = less noise)
@@ -677,11 +677,11 @@ def scan_for_signal(
 
     # ── Trend-Following Filter (Counter-Trend Block) ──
     if SKIP_COUNTER_TREND:
-        if regime == "trending_up" and bias_dir == -1:
-            print(f"SKIP (Counter-Trend SHORT in context trending_up)", end=" ")
+        if regime == "strong_bull" and bias_dir == -1:
+            print(f"SKIP (Counter-Trend SHORT in strong_bull regime)", end=" ")
             return None
-        elif regime == "trending_down" and bias_dir == 1:
-            print(f"SKIP (Counter-Trend LONG in context trending_down)", end=" ")
+        elif regime == "strong_bear" and bias_dir == 1:
+            print(f"SKIP (Counter-Trend LONG in strong_bear regime)", end=" ")
             return None
 
     # ── Ranging Regime Block ──
@@ -885,7 +885,7 @@ def scan_for_signal(
         "bias_reason": bias_reason,
         "exchange_id": exchange_id,
         "signal_key": signal_key,
-        "is_counter_trend": (bias_dir == 1 and regime == "trending_down") or (bias_dir == -1 and regime == "trending_up"),
+        "is_counter_trend": (bias_dir == 1 and regime == "strong_bear") or (bias_dir == -1 and regime == "strong_bull"),
         "metadata": get_market_metadata(df_ltf_df) # Training context/Quality meter
     }
 
@@ -1157,7 +1157,7 @@ def check_and_close_trades(state: Dict):
                 # If partial exit was done, we already locked in 50% profit
                 # The remaining 50% is lost at SL
                 if trade.get("partial_exit_done"):
-                    pnl = -(trade_risk_amt * PARTIAL_EXIT_PCT)  # lose 50% of risk on remaining
+                    pnl = 0.0  # remaining leg exits at entry price (BE stop) — zero PnL
                 else:
                     pnl = 0.0 if result == "BE" else -trade_risk_amt
             elif hi >= tp:    # TP hit
@@ -1173,7 +1173,7 @@ def check_and_close_trades(state: Dict):
                 result     = "BE" if trade.get("be_triggered") else "LOSS"
                 exit_price = sl
                 if trade.get("partial_exit_done"):
-                    pnl = -(trade_risk_amt * PARTIAL_EXIT_PCT)
+                    pnl = 0.0  # remaining leg exits at entry price (BE stop) — zero PnL
                 else:
                     pnl = 0.0 if result == "BE" else -trade_risk_amt
             elif lo <= tp:    # TP hit
