@@ -992,9 +992,9 @@
             document.getElementById('stat-pnl').innerText = `${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)}`;
             document.getElementById('stat-pnl').className = `stat-value ${pnl >= 0 ? 'up' : 'down'}`;
 
-            const total = state.total_trades || 0;
+            const closedCount = (closedTrades || []).length;
             const wins = state.wins || 0;
-            const wr = total > 0 ? (wins / total * 100).toFixed(1) : "0.0";
+            const wr = closedCount > 0 ? (wins / closedCount * 100).toFixed(1) : "0.0";
             document.getElementById('stat-wr').innerText = `${wr}%`;
 
             const target = 5500;

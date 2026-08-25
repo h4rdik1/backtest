@@ -117,6 +117,11 @@ To survive market noise, a trade's risk management must align with the timeframe
 - HTF SFP at a **Range Extreme** (top or bottom of a macro range) → The LTF retest at Equilibrium (0.5) can be valid Long/Short with strict LTF confirmation.
 - HTF SFP at a **Local Swing High** (not a range extreme) → Do NOT take the counter-trend LTF signal. Wait for HTF bias to flip.
 
+### 🌐 BTC Correlation Filter (Altcoin Alignment Rule)
+Do not let fear of a range-bound BTC prevent you from taking clean altcoin setups, unless BTC has actively confirmed a reversal.
+* **Green Light to Long Alts:** If BTC is at its Range High but has **no confirmed Bearish SFP** on the HTF (no active reversal signal), you should take confirmed A-Tier/S-Tier long setups on alts.
+* **Red Light to Long Alts:** Only skip altcoin longs if BTC has **already closed a clean Bearish SFP on the 4H/1H**, confirming that institutional distribution has actively started on BTC.
+
 ---
 
 ## Execution Rules (Non-Negotiable)
@@ -187,6 +192,43 @@ A swing high/low must meet structural validity to be used as a range boundary:
 
 ---
 
+## The Re-Entry Playbook: Joining a Trend After Missing the Sweep
+
+When you miss the absolute bottom sweep (the HTF SFP at the Range Low) and the price starts expanding, use this playbook to join the trend safely without getting chopped up by mid-range internal noise:
+
+### 1. Filter the Noise (Context First, LTF Second)
+* **The Rule:** Map your trading ranges and POIs **only on the HTF/Context timeframe (4H or 1H)**.
+* **The Discipline:** Ignore the minor 15M/5M internal ranges and pullbacks while the price is expanding. Only zoom in to the LTF once the price has pulled back into a confirmed 4H/1H POI.
+
+### 2. Wait for the Displacement Leg (SOP 1)
+* Do not buy pullbacks that occur in the middle of a range. Wait for the market to prove it wants to expand by printing a clean **displacement leg**—an aggressive move that breaks out of the local range and closes a candle body above the previous swing high (**BOS / MSB**).
+* Once the BOS occurs, establish your new range boundaries:
+  * **Range Low (0):** The absolute lowest wick point that initiated the breakout leg.
+  * **Range High (1):** The absolute highest wick point reached before a clear 4H pullback begins.
+
+### 3. Map the POIs in the Discount Zone (SOP 4)
+* Draw the **0.5 Equilibrium** line. Under **SOP 4**, longs are strictly forbidden in the Premium zone (> 0.5). You must wait for the price to retrace into the **Discount zone (< 0.5)**.
+* Map these three valid POIs inside the Discount zone:
+  * **The Origin Order Block (OB):** The last bearish candle before the breakout leg started.
+  * **The Fair Value Gap (FVGs):** Imbalance zones inside the displacement leg that sit in discount.
+  * **The Breaker Block:** A broken bearish order block that now acts as demand (support) upon retest.
+
+### 4. Execute with LTF Confirmation (A-Tier Setup)
+* Once price retraces into your discount POI, zoom in to the 15M/5M timeframe and execute:
+  1. **LTF Sweep:** Wait for the price to wick below local minor wicks inside the POI and close back inside (grabbing internal stops).
+  2. **LTF MSB:** Wait for a candle body to close above the last local lower high.
+  3. **Entry:** Place a limit order at the new LTF OB/FVG.
+
+### 5. Trading the Range Rotation Pathway (If You Miss the Extreme)
+* **The Rule:** If you miss the initial sweep at the Range High (RH) or Range Low (RL), do not trade the internal space as a sideways market. Instead, trade the **rotation leg** as a local trend moving from one extreme to the other.
+* **The Process:**
+  1. **Confirm the Rotation:** Wait for a 4H/1H BOS of the first major internal swing level after the sweep. This confirms rotation is underway.
+  2. **Treat as a Local Trend:** Map the new displacement leg (from the sweep extreme to the new swing low/high).
+  3. **Find the POI in Premium/Discount:** Draw the local equilibrium of the new leg. If price is rotating down, look for a Bear OB/FVG in the *Premium* zone of this local leg. If rotating up, look for a Bull OB/FVG in the *Discount* zone of this local leg.
+  4. **LTF Entry & Target:** Execute on the 15M/5M pullback into this POI using standard LTF SFP + MSB rules, targeting the macro Range Extreme.
+
+---
+
 ## Tier Quick-Reference
 
 | Tier | HTF Sweep | HTF + LTF Aligned | LTF FVG+OB Confluence | LTF Sweep | Win Rate (Backtest) | Challenge Eligible |
@@ -198,4 +240,4 @@ A swing high/low must meet structural validity to be used as a range boundary:
 
 ---
 
-*Last Updated: 2026-04-10 — Based on live trading session analysis and challenge post-mortems.*
+*Last Updated: 2026-08-08 — Added the Re-Entry Playbook based on live session analysis and structure conflict mortems.*

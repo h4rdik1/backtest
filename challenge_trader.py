@@ -81,7 +81,7 @@ CHALLENGE_FLOOR  = 4700.00  # hard floor — kept for backwards compat
 CHALLENGE_TARGET = 5500.00  # challenge passed
 RISK_PER_TRADE   = BASE_RISK_USDT  # base dollar risk per trade (score-adjusted dynamically)
 REWARD_PER_TRADE = 100.00   # 2R = $100 win (at full size)
-MAX_OPEN_TRADES  = 2        # max concurrent positions
+MAX_OPEN_TRADES  = 4        # max concurrent positions
 DEFAULT_INTERVAL = 600      # 10 minutes
 
 # -----------------------------------------------------------
@@ -273,7 +273,8 @@ def print_dashboard(state: Dict):
     total = state.get("total_trades", 0)
     w = state.get("wins", 0)
     l = state.get("losses", 0)
-    wr = (w / total * 100) if total > 0 else 0
+    closed_count = len(state.get("closed_trades", []))
+    wr = (w / closed_count * 100) if closed_count > 0 else 0
 
     print(f"  Balance     : ${bal:>8.2f}   (Start: ${CHALLENGE_START:.2f})")
     print(f"  P&L         : ${pnl:>+8.2f}   (Peak: ${peak:.2f})")
@@ -935,6 +936,7 @@ def open_trade(state: Dict, signal: Dict) -> Dict:
         "direction": signal["direction"],
         "entry_price": signal["entry_price"],
         "sl_price": signal["sl_price"],
+        "initial_sl_price": signal["sl_price"],
         "tp_price": signal["tp_price"],
         "exit_price": None,
         "result": "OPEN",
@@ -1052,23 +1054,50 @@ def check_and_close_trades(state: Dict):
 
         # ── TASK 9: Time-based invalidation (skip for manual trades) ──
         if not trade.get("manual") and check_time_invalidation(trade, len(df) - 1, df):
-            result     = "TIME_EXPIRED"
             exit_price = close_now
-            pnl        = 0.0  # close at market (approx breakeven for paper trading)
-            state["balance"] += pnl
+            initial_sl = trade.get("initial_sl_price")
+            if initial_sl is None:
+                risk_dist = abs(tp - entry) / 2.0
+                initial_sl = entry - risk_dist if direction == "LONG" else entry + risk_dist
+            
+            risk_distance = abs(entry - initial_sl)
+            if risk_distance <= 0:
+                risk_distance = entry * 0.005
+                
+            position_factor = (1.0 - PARTIAL_EXIT_PCT) if trade.get("partial_exit_done") else 1.0
+            
+            if direction == "LONG":
+                remaining_pnl = (exit_price - entry) / risk_distance * trade_risk_amt * position_factor
+            else:
+                remaining_pnl = (entry - exit_price) / risk_distance * trade_risk_amt * position_factor
+                
+            partial_pnl = (trade_reward_amt * PARTIAL_EXIT_PCT) if trade.get("partial_exit_done") else 0.0
+            total_pnl = partial_pnl + remaining_pnl
+            
+            state["balance"] += remaining_pnl
             update_peak_balance(state)
+            
+            if total_pnl > 0.01:
+                result = "WIN"
+                state["wins"] += 1
+            elif total_pnl < -0.01:
+                result = "LOSS"
+                state["losses"] += 1
+            else:
+                result = "BE"
+                
             trade.update({
                 "closed_at" : datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                 "exit_price": round(exit_price, 8),
                 "result"    : result,
-                "pnl_usd"   : pnl,
+                "pnl_usd"   : round(total_pnl, 2),
                 "balance_after": round(state["balance"], 2),
-                "notes"     : f"Time expired after {len(df)} bars with max_r={trade['max_r_reached']:.2f}R",
+                "notes"     : f"Time expired | SL_init={format_price(initial_sl)} | TP={format_price(tp)} | Exit={format_price(exit_price)} | Net PnL={total_pnl:+.2f}",
             })
             state["closed_trades"].append(trade)
             log_trade_to_csv(trade)
             event(state, "TIME_EXP",
-                  f"{trade['trade_id']} {sym} {direction} closed (time invalidation, {trade['max_r_reached']:.2f}R reached)")
+                  f"{trade['trade_id']} {sym} {direction} closed (time invalidation, {trade['max_r_reached']:.2f}R reached, net pnl: {total_pnl:+.2f})")
             continue
 
         result     = None
@@ -1150,63 +1179,76 @@ def check_and_close_trades(state: Dict):
         trade_risk_amt   = trade.get("trade_risk",   RISK_PER_TRADE)
         trade_reward_amt = trade.get("trade_reward", REWARD_PER_TRADE)
 
-        if direction == "LONG":
-            if lo <= sl:      # SL hit
-                result     = "BE" if trade.get("be_triggered") else "LOSS"
-                exit_price = sl
-                # If partial exit was done, we already locked in 50% profit
-                # The remaining 50% is lost at SL
-                if trade.get("partial_exit_done"):
-                    pnl = 0.0  # remaining leg exits at entry price (BE stop) — zero PnL
-                else:
-                    pnl = 0.0 if result == "BE" else -trade_risk_amt
-            elif hi >= tp:    # TP hit
-                result     = "WIN"
-                exit_price = tp
-                if trade.get("partial_exit_done"):
-                    # Already got 50% at 2R; collect remaining 50% at TP
-                    pnl = trade_reward_amt * PARTIAL_EXIT_PCT
-                else:
-                    pnl = trade_reward_amt
-        else:  # SHORT
-            if hi >= sl:      # SL hit
-                result     = "BE" if trade.get("be_triggered") else "LOSS"
-                exit_price = sl
-                if trade.get("partial_exit_done"):
-                    pnl = 0.0  # remaining leg exits at entry price (BE stop) — zero PnL
-                else:
-                    pnl = 0.0 if result == "BE" else -trade_risk_amt
-            elif lo <= tp:    # TP hit
-                result     = "WIN"
-                exit_price = tp
-                if trade.get("partial_exit_done"):
-                    pnl = trade_reward_amt * PARTIAL_EXIT_PCT
-                else:
-                    pnl = trade_reward_amt
+        initial_sl = trade.get("initial_sl_price")
+        if initial_sl is None:
+            risk_dist = abs(tp - entry) / 2.0
+            initial_sl = entry - risk_dist if direction == "LONG" else entry + risk_dist
 
-        if result is None:
+        risk_distance = abs(entry - initial_sl)
+        if risk_distance <= 0:
+            risk_distance = entry * 0.005
+
+        position_factor = (1.0 - PARTIAL_EXIT_PCT) if trade.get("partial_exit_done") else 1.0
+
+        is_sl_hit = False
+        is_tp_hit = False
+
+        if direction == "LONG":
+            if lo <= sl:
+                is_sl_hit = True
+                exit_price = sl
+            elif hi >= tp:
+                is_tp_hit = True
+                exit_price = tp
+        else:  # SHORT
+            if hi >= sl:
+                is_sl_hit = True
+                exit_price = sl
+            elif lo <= tp:
+                is_tp_hit = True
+                exit_price = tp
+
+        if not is_sl_hit and not is_tp_hit:
             still_open.append(trade)
             continue
 
+        # Calculate PnL for the remaining position
+        if is_tp_hit:
+            remaining_pnl = trade_reward_amt * position_factor
+        else:
+            # SL or trailing SL hit
+            if direction == "LONG":
+                remaining_pnl = (exit_price - entry) / risk_distance * trade_risk_amt * position_factor
+            else:
+                remaining_pnl = (entry - exit_price) / risk_distance * trade_risk_amt * position_factor
+
+        partial_pnl = (trade_reward_amt * PARTIAL_EXIT_PCT) if trade.get("partial_exit_done") else 0.0
+        total_pnl = partial_pnl + remaining_pnl
+
         # Close the trade
-        state["balance"] += pnl
+        state["balance"] += remaining_pnl
         update_peak_balance(state)  # Task 8: update peak on every balance change
+
+        # Determine result based on total PnL
+        if total_pnl > 0.01:
+            result = "WIN"
+            state["wins"] += 1
+        elif total_pnl < -0.01:
+            result = "LOSS"
+            state["losses"] += 1
+        else:
+            result = "BE"
 
         trade.update(
             {
                 "closed_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                 "exit_price": round(exit_price, 8),
                 "result": result,
-                "pnl_usd": pnl,
+                "pnl_usd": round(total_pnl, 2),
                 "balance_after": round(state["balance"], 2),
-                "notes": f"SL={format_price(sl)} | TP={format_price(tp)} | Exit={format_price(exit_price)}",
+                "notes": f"SL_init={format_price(initial_sl)} | TP={format_price(tp)} | Exit={format_price(exit_price)} | Net PnL={total_pnl:+.2f}",
             }
         )
-
-        if result == "WIN":
-            state["wins"] += 1
-        elif result == "LOSS":
-            state["losses"] += 1
 
         state["closed_trades"].append(trade)
         log_trade_to_csv(trade)
@@ -1273,6 +1315,9 @@ def check_challenge_status(state: Dict) -> str:
         return "STOPPED"
     if state.get("status") == "WEEKLY_HALT":
         return "WEEKLY_HALT"
+    # FIX: If the challenge was already stopped (e.g., via live_backtest_deviation or drawdown), keep it stopped
+    if state.get("status") == "STOPPED":
+        return "STOPPED"
     return "ACTIVE"
 
 
@@ -1423,13 +1468,11 @@ def run_scan(state: Dict, chains_to_scan: List[str]):
 
     # ── Daily trade cap ————————————————————————————————
     # (Only prevents STARTING new trades or processing new signals)
+    # FIX: Exclude pending trades from the daily cap calculation so they do not block scanning when unfilled
     today_str = datetime.now().strftime("%Y-%m-%d")
     trades_today = sum(
         1 for t in state.get("closed_trades", []) + state.get("open_trades", [])
         if t.get("opened_at", "").startswith(today_str)
-    ) + sum(
-        1 for t in state.get("pending_trades", [])
-        if t.get("expires_at", "")[:10] == today_str
     )
     if trades_today >= MAX_TRADES_PER_DAY:
         event(state, "SCAN", f"Daily trade cap hit ({trades_today}/{MAX_TRADES_PER_DAY}). Waiting for tomorrow.")

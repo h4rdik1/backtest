@@ -123,7 +123,7 @@ WALK_FORWARD_TOLERANCE    = 0.20
 # ── CHALLENGE QUALITY GATES (updated May-05) ──
 MIN_DISPLACEMENT_STRENGTH = 1.2      # Raised from 1.2 for better momentum
 MIN_SETUP_TIER            = "B"      # Allow B-tier setups
-MAX_TRADES_PER_DAY        = 4        # CHANGED from 5 — match Task 3 daily limit (MAX_DAILY_TRADES)
+MAX_TRADES_PER_DAY        =  4   # CHANGED from 5 — match Task 3 daily limit (MAX_DAILY_TRADES)
 MIN_SL_PCT_BTC            = 0.003
 MIN_SL_PCT_ALTS           = 0.005    # CHANGED to match MIN_SL_DISTANCE config
 MAX_STOP_DISTANCE         = 0.035
@@ -164,7 +164,7 @@ SESSIONS = {
     "asian"       : ("00:00", "07:00"),   # UTC — low quality, avoid unless S-tier
 }
 # Minimum tier required per session type
-SESSION_MIN_TIER          = {"asian": "S", "other": "A"}
+SESSION_MIN_TIER          = {"asian": "S", "other": "B"}
 
 
 # ══════════════════════════════════════════════════════════════
@@ -242,7 +242,7 @@ LIVE_BACKTEST_HALT_PCT    = 0.25    # 25% deviation → halt trading and alert
 # ══════════════════════════════════════════════════════════════
 # RISK PARAMETERS (all tasks combined)
 # ══════════════════════════════════════════════════════════════
-MAX_OPEN_TRADES           = 2
+MAX_OPEN_TRADES           = 4
 MAX_DAILY_TRADES          = 4       # matches MAX_TRADES_PER_DAY
 MIN_SL_DISTANCE           = {"BTC/USDT": 0.003, "default": 0.005}
 SL_BUFFER_PCT             = 0.001

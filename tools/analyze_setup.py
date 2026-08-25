@@ -12,7 +12,8 @@ from models.backtest_cisd import (
     fetch_live_ohlcv, 
     find_latest_sfp, 
     find_order_blocks, 
-    classify_regime
+    classify_regime,
+    find_recent_swings
 )
 from core.config import format_price
 
@@ -45,15 +46,14 @@ def analyze_symbol(symbol: str):
     print("\n[HTF CONTEXT - 4H]")
     regime = classify_regime(df_4h, df_4h.index[-1])
     
-    # Simple Lookback Range for Premium/Discount
-    lookback_4h = 40
-    recent_4h = df_4h.tail(lookback_4h)
-    range_high = recent_4h['high'].max()
-    range_low = recent_4h['low'].min()
-    range_mid = (range_high + range_low) / 2
-    
+    # Structural Range using Confirmed Fractal Swing High / Swing Low
+    # (Excludes active unconfirmed expansion candles)
+    range_high, range_low = find_recent_swings(df_4h, len(df_4h) - 1, lookback=60)
     current_price = df_5m['close'].iloc[-1]
-    pd_pct = ((current_price - range_low) / (range_high - range_low)) * 100
+    range_high = max(range_high, current_price)
+    range_low = min(range_low, current_price)
+    range_mid = (range_high + range_low) / 2
+    pd_pct = min(100.0, max(0.0, ((current_price - range_low) / (range_high - range_low)) * 100))
     
     print(f"  Regime:       {regime.replace('_', ' ').upper()}")
     print(f"  4H Range:     {format_price(range_low)} - {format_price(range_high)}")

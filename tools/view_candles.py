@@ -138,29 +138,60 @@ class ViewerHandler(http.server.SimpleHTTPRequestHandler):
                     return
                 trade["exit_price"] = exit_price
                 trade["closed_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                # Simple PnL: risk 35 per trade, 2:1 RR assumed from SL distance
-                sl_dist = abs(trade.get("entry_price", 0) - trade.get("sl_price", 0))
-                if trade.get("direction") == "LONG":
-                    pnl_r = (exit_price - trade["entry_price"]) / sl_dist if sl_dist else 0
+                
+                # Get or reconstruct initial SL price
+                entry = trade.get("entry_price", 0)
+                tp = trade.get("tp_price", 0)
+                initial_sl = trade.get("initial_sl_price")
+                if initial_sl is None and tp and entry:
+                    risk_dist = abs(tp - entry) / 2.0
+                    initial_sl = entry - risk_dist if trade.get("direction") == "LONG" else entry + risk_dist
+                
+                if initial_sl is not None:
+                    sl_dist = abs(entry - initial_sl)
                 else:
-                    pnl_r = (trade["entry_price"] - exit_price) / sl_dist if sl_dist else 0
+                    sl_dist = abs(entry - trade.get("sl_price", 0))
+                    
+                if not sl_dist:
+                    sl_dist = entry * 0.005
+                
+                if trade.get("direction") == "LONG":
+                    pnl_r = (exit_price - entry) / sl_dist
+                else:
+                    pnl_r = (entry - exit_price) / sl_dist
+                    
                 risk = trade.get("trade_risk", 35.0)
-                pnl_usd = round(pnl_r * risk, 2)
-                trade["pnl_usd"] = pnl_usd
-                trade["result"] = "WIN" if pnl_usd >= 0 else "LOSS"
-                trade["balance_after"] = round(state.get("balance", 5000) + pnl_usd, 2)
+                reward = trade.get("trade_reward", 70.0)
+                partial_exit_done = trade.get("partial_exit_done", False)
+                
+                partial_pnl = (reward * 0.50) if partial_exit_done else 0.0
+                position_factor = 0.50 if partial_exit_done else 1.0
+                
+                remaining_pnl = round(pnl_r * risk * position_factor, 2)
+                total_pnl = partial_pnl + remaining_pnl
+                
+                trade["pnl_usd"] = round(total_pnl, 2)
+                if initial_sl is not None:
+                    trade["initial_sl_price"] = round(initial_sl, 8)
+                
+                if total_pnl > 0.01:
+                    trade["result"] = "WIN"
+                    state["wins"] = state.get("wins", 0) + 1
+                elif total_pnl < -0.01:
+                    trade["result"] = "LOSS"
+                    state["losses"] = state.get("losses", 0) + 1
+                else:
+                    trade["result"] = "BE"
+                    
+                trade["balance_after"] = round(state.get("balance", 5000) + remaining_pnl, 2)
                 state["balance"] = trade["balance_after"]
                 state["open_trades"] = new_open
                 if "closed_trades" not in state:
                     state["closed_trades"] = []
                 state["closed_trades"].append(trade)
                 state["total_trades"] = state.get("total_trades", 0) + 1
-                if pnl_usd >= 0:
-                    state["wins"] = state.get("wins", 0) + 1
-                else:
-                    state["losses"] = state.get("losses", 0) + 1
                 write_state(state)
-            send_json({"ok": True, "pnl_usd": pnl_usd})
+            send_json({"ok": True, "pnl_usd": round(total_pnl, 2)})
             return
 
         # --- POST /api/trade/add --- add a manual trade
@@ -186,6 +217,7 @@ class ViewerHandler(http.server.SimpleHTTPRequestHandler):
                     "direction": payload["direction"].upper(),
                     "entry_price": float(payload["entry_price"]),
                     "sl_price": float(payload["sl_price"]),
+                    "initial_sl_price": float(payload["sl_price"]),
                     "tp_price": float(payload["tp_price"]),
                     "exit_price": None,
                     "result": "OPEN",

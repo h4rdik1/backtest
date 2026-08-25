@@ -129,12 +129,12 @@ def classify_regime(df_weekly_or_daily: pd.DataFrame, entry_time=None) -> str:
 
     # ── Strong Bull: price near highs AND making higher lows ──
     # The 0.90 multiplier means 'within 10% of the 20-bar peak'
-    near_highs  = current_close > (high_20 * 0.95)
+    near_highs  = current_close > (high_20 * 0.90)
     higher_lows = second_half["low"].min() > first_half["low"].min()
 
     # ── Strong Bear: price near lows AND making lower highs ──
     # The 1.10 multiplier means 'within 10% above the 20-bar trough'
-    near_lows   = current_close < (low_20 * 1.05)
+    near_lows   = current_close < (low_20 * 1.10)
     lower_highs = second_half["high"].max() < first_half["high"].max()
 
     if near_highs and higher_lows:
