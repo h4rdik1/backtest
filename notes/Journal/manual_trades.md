@@ -1,0 +1,118 @@
+# 📓 Manual Trade Logs
+
+This file records manual trades taken outside of the autonomous engine, tracking setup quality, execution, and key structural lessons.
+
+---
+
+## 📈 Trade Log: TAO/USDT Long (August 8, 2026)
+
+*   **Asset:** TAO/USDT Perpetual
+*   **Direction:** Long
+*   **Setup Tier:** A-Tier (HTF POI Tap + LTF Sweep + LTF MSB)
+*   **Context (4H):** Price tapped the 4H demand zone (green order block) between $189.50 - $192.30.
+*   **Execution (15M):** 
+    *   LTF Sweep of local lows down to $190.50.
+    *   LTF Bullish MSB (BOS of local high).
+*   **Trade Parameters:**
+    *   **Entry Price:** $192.12
+    *   **Stop Loss:** $190.14 (Risk: $1.98)
+    *   **First Target (2R):** $196.08 (Hit - Closed 50%)
+    *   **Second Target (Range High):** $200.02 (Closed at $198.50 - 3.22R)
+    *   **Net Outcome:** Successful Win (Average P&L: **~2.6R**)
+
+### 💡 Key Lessons & Post-Mortem
+1.  **Timeframe Mismatch Caution (The Stop-Loss Trap):** The initial entry was placed at $192.03 with a stop at $190.05. This stop was placed inside the range boundary, making it highly vulnerable to being run. The lower entry at $192.12 with SL at $190.14 survived the local volatility because it was anchored properly.
+2.  **Mitigation / Stale OB Risk:** The trade was taken on the 6th mitigation of the 4H order block. While it succeeded, trading a stale block is generally lower probability.
+3.  **Opposing Supply Target:** Because the higher timeframe trend was bearish (Strong Bear on 4H) and had already printed a Bearish MSB at $195.00, this long was counter-trend. Opposing supply was hit at $194.50 - $195.00, causing a heavy stall before the final squeeze to $198.50. Taking partial profits at 2.0R was the mathematically correct decision.
+
+---
+
+## 📉 Trade Log: BTC/USDT Long (August 11, 2026)
+
+*   **Asset:** BTC/USDT Perpetual
+*   **Direction:** Long (Re-Entry)
+*   **Setup Tier:** B-Tier (Counter-Trend, Premium Entry)
+*   **Context (4H):** Macro trend flipped to **STRONG BEAR**. Price was in the Master Premium zone.
+*   **Execution (15M):** 
+    *   Missed the initial 2R bounce from the $63,800 SFP.
+    *   Entered on the pullback expecting a continuation back to the Range High.
+*   **Trade Parameters:**
+    *   **Entry Price:** $64,045.20
+    *   **Stop Loss:** $63,803.80 (Risk: $241.40)
+    *   **Target:** $64,861.40
+    *   **Outcome:** Stopped Out (Loss: **-1.0R**)
+
+### 💡 Key Lessons & Post-Mortem
+1.  **Premium Zone Long Violation (SOP 4):** The local range was $62,392.20 – $65,415.40, with a 0.5 Equilibrium at $63,903.80. The entry at $64,045.20 was in the **Premium Zone** of the local range. Longs in premium are strictly forbidden because you are buying right before the market seeks discount.
+2.  **Trend Incoherence (Strong Bear Context):** The 4H macro trend had flipped bearish. In a strong bear market, upward bounces are weak, and local support zones are easily broken (BOS) to continue the downward expansion. 
+3.  **FOMO Chasing Trap:** Entering a pullback after missing a clean 2R setup often leads to forced entries. If you miss the primary sweep entry, let the trade go. Never chase a re-entry in premium.
+
+---
+
+## 📈 Trade Log: TAO/USDT Swing Long (August 12, 2026)
+
+*   **Asset:** TAO/USDT Perpetual
+*   **Direction:** Long (Swing)
+*   **Setup Tier:** A-Tier (Range Breakout + 1H SFP + 1H Bullish MSB)
+*   **Context (4H):** Breakout of the old daily range ($187.52 – $199.92). Price is now establishing a new range expansion phase.
+*   **Execution (5M):** 
+    *   Price broke above the 1H Range High ($199.92).
+    *   Pulled back and printed a 5M Bullish SFP of local lows (swept to $196.50 and closed back inside).
+    *   Printed a 5M candle body close confirming a Bullish CHoCH above $199.50.
+*   **Trade Parameters:**
+    *   **Entry Price:** $200.68 (Half position entered at market)
+    *   **Stop Loss:** $195.53 (Risk: $5.15)
+    *   **Target:** $219.20
+    *   **Outcome:** Active (Pending)
+
+### 💡 Execution Strategy & Management
+1.  **Half Position Risk Management:** Entering a half position (5 TAO, ~$1,003 with 2x leverage) is a very smart way to manage swing risk, resulting in a maximum risk of only **$25.75 (~0.53% of challenge balance)**.
+2.  **Adding to Position:** The other half of the position will be added if price pulls back to retest the 5M/1H demand block / order block at **$198.50**, keeping the average entry tight.
+3.  **Target R:R:** The target of $219.20 represents a **3.59R swing trade**, which is fully compliant with the 2.0R minimum requirement.
+
+---
+
+## 📉 Trade Log: BTC/USDT Short (August 12, 2026)
+
+*   **Asset:** BTC/USDT Perpetual
+*   **Direction:** Short (Intraday)
+*   **Setup Tier:** A-Tier (BOS + 1H FVG Pullback Retest + 5M Bearish reversal)
+*   **Context (4H):** Macro trend is **STRONG BEAR** after the break of the local $63,800 low.
+*   **Execution (5M):** 
+    *   Price pulled back to mitigate the 1H FVG at $63,800 – $64,000.
+    *   5M structure printed a bearish reversal (lower low and lower high).
+    *   Entered short at market.
+*   **Trade Parameters:**
+    *   **Entry Price:** $63,666.90
+    *   **Stop Loss:** $63,900.00 (Risk: $233.10)
+    *   **Target:** $62,800.00
+    *   **Outcome:** Stopped Out (Loss: **-1.0R** / -$25.00)
+
+### 💡 Execution Strategy & Management
+1.  **Strict Risk Control:** Entering with a 3x leverage size (~$3,820 value) anchors your total risk to exactly **$25.00 (~0.52% of challenge balance)**. This is extremely safe and protects your drawdown cushion.
+2.  **R:R Expectancy:** The target at $62,800.00 yields a **3.72R trade**, which has positive mathematical expectancy and keeps you fully compliant with the 2.0R rule.
+
+
+## 📉 Trade Log: HYPE/USDT Short (September 9-10, 2026)
+
+*   **Asset:** HYPE/USDT Perpetual
+*   **Direction:** Short
+*   **Setup Tier:** S-Tier (Macro Range Sweep + 1H SFP + 5M Bearish MSS + FVG Retest)
+*   **Context (4H):** Price swept the absolute Macro Range High ($89.50) with a wick up to $87.059. This confirmed a massive SFP in deep Premium territory.
+*   **Execution (5M):** 
+    *   Price dumped and pulled back into a 5M Bullish FVG.
+    *   5M Bearish MSS was confirmed when a strong red displacement candle closed its *body* below the local pivot low (~$86.47) that created the $87.059 high.
+    *   Initial Entry: $85.721.
+    *   Split Entry: Added to the position inside the FVG at $86.018 to improve average.
+*   **Trade Parameters:**
+    *   **Average Entry:** $85.848
+    *   **Stop Loss:** $87.08 (Anchored safely above the $87.059 sweep wick)
+    *   **TP 1 (Internal Liquidity):** $81.60
+    *   **TP 2 (Runner - External Liquidity):** $79.00 (Front-running the absolute $78.50 Range Low)
+    *   **Outcome:** Active/Winning. Massive drop overnight down to $83.316. SL moved to breakeven ($85.848) making it a risk-free trade.
+
+### 💡 Key Lessons & Post-Mortem
+1.  **Mark Price vs. Last Price (The Save):** The exchange mark price saved the initial tight stop ($87.012) from being triggered by the $87.059 wick. Corrected the SL immediately to $87.08 to properly anchor above the absolute wick.
+2.  **Averaging Up in a Winner:** Added to the position inside the confirmed FVG gap after the SFP was validated. This pulled the average entry up to $85.848, vastly improving the R:R ratio while keeping risk contained.
+3.  **Low Volume Grind (Asian Session):** When volume is low, price bleeds/grinds down with small choppy candles instead of massive displacement. Do not panic-close a trade due to choppy price action if the lower-high structure remains intact.
+4.  **Cascading Take Profits:** Identified that the Old Range High ($86.70) and local swing lows ($80.12) become internal liquidity targets. Scaling out at these levels guarantees profit during the journey to the Macro Range Low ($78.50).

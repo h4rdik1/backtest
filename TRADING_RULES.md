@@ -15,14 +15,23 @@ The framework has **4 tiers** of setup quality. You must correctly identify the 
 
 ## Timeframe Alignment Chains
 
-The system uses three specific "chains." Each chain scans from the macro context down to the entry trigger.
+The system scans from macro structural context down to the micro entry trigger. Each alignment chain represents a top-to-bottom institutional story.
 
-| Chain | Context (Structural Bias) | Bias (Direction) | Entry (Trigger) |
-|-------|--------------------------|-------------------|-----------------|
-| **Weekly** | 1W | 4H | 15M |
-| **Daily** | 1D | 1H | 5M |
+| Chain Name | Context (Structural Range) | Bias (Directional Sweep) | Entry (Trigger & SL) |
+| :--- | :--- | :--- | :--- |
+| **Swing** | Weekly (1W) | 4-Hour (4H) | 15-Minute (15M) |
+| **Intraday** | Daily (1D) | 1-Hour (1H) | 5-Minute (5M) |
 
-> **Rule:** Always read the chart from LEFT to RIGHT and TOP to BOTTOM (HTF → LTF). Never work your way up from the LTF to justify a bias.
+### 🛡️ Understanding the Timeframe Hierarchy (Preventing Mismatch)
+To survive market noise, a trade's risk management must align with the timeframe of its core thesis:
+1. **Context Layer (Structure):** Defines key ranges, order blocks, and premium/discount zones. Tells us *where* institutional interest lies.
+2. **Bias Layer (Direction):** Tells us *when* smart money is actively rejecting a level via Swing Failure Patterns (SFPs) or Fair Value Gaps (FVGs). 
+3. **Entry Layer (Execution):** Fine-tunes the exact entry (e.g. FVG touch or local OB) and timing.
+
+> [!CAUTION]
+> **The Stop-Loss Timeframe Trap:** Do not let a Lower Timeframe (LTF) SFP override the stop-loss of a Higher Timeframe (HTF) setup. If your directional bias is based on the 4H/1H, your Stop Loss must remain anchored to the 4H/1H SFP or swing structure. Shifting your stop to a tight 15M/5M level just because it is "newer" will get you shaken out by minor noise before the macro setup plays out.
+> 
+> **Fallback swing lows/highs** (`protected_swing`) are calculated looking back 20 bars on the **Bias Timeframe** (4H or 1H) rather than the entry timeframe, giving the position a true structural floor (20 hours of structure on Intraday, 80 hours on Swing).
 
 ---
 
@@ -108,6 +117,11 @@ The system uses three specific "chains." Each chain scans from the macro context
 - HTF SFP at a **Range Extreme** (top or bottom of a macro range) → The LTF retest at Equilibrium (0.5) can be valid Long/Short with strict LTF confirmation.
 - HTF SFP at a **Local Swing High** (not a range extreme) → Do NOT take the counter-trend LTF signal. Wait for HTF bias to flip.
 
+### 🌐 BTC Correlation Filter (Altcoin Alignment Rule)
+Do not let fear of a range-bound BTC prevent you from taking clean altcoin setups, unless BTC has actively confirmed a reversal.
+* **Green Light to Long Alts:** If BTC is at its Range High but has **no confirmed Bearish SFP** on the HTF (no active reversal signal), you should take confirmed A-Tier/S-Tier long setups on alts.
+* **Red Light to Long Alts:** Only skip altcoin longs if BTC has **already closed a clean Bearish SFP on the 4H/1H**, confirming that institutional distribution has actively started on BTC.
+
 ---
 
 ## Execution Rules (Non-Negotiable)
@@ -154,6 +168,67 @@ Before submitting any trade entry, run through this checklist:
 
 ---
 
+## Range & Structure Marking SOP
+
+To maintain consistency and avoid bias, always follow these rules when marking trading ranges:
+
+### 1. The Leg of Displacement (SOP 1)
+Do not draw ranges in choppy, sideways environments. A range is only established after a **displacement leg**—an aggressive move that breaks previous structure (BOS or CHoCH/MSB).
+* **Range Low (0):** The absolute lowest wick point that initiated the upward displacement.
+* **Range High (1):** The absolute highest wick point reached before a clear pullback (defined as at least two consecutive candles closing in the opposite direction).
+
+### 2. The 3-Candle Swing Confirmation (SOP 2)
+A swing high/low must meet structural validity to be used as a range boundary:
+* **Swing Low:** A candle low flanked by a higher low on the left and a higher low on the right.
+* **Swing High:** A candle high flanked by a lower high on the left and a lower high on the right.
+
+### 3. Breaks vs. Sweeps (SOP 3)
+* **BOS (Break of Structure):** A candle body closes *outside* the range boundary. The current range is now invalidated. Wait for a new displacement leg.
+* **Sweep / SFP (Swing Failure Pattern):** A wick breaks the boundary but the candle closes *back inside* the range. The range remains active, and this is a high-probability reversal signal.
+
+### 4. Premium vs. Discount (SOP 4)
+* **Discount (< 0.5 Equilibrium):** The only zone where **Longs** are permitted.
+* **Premium (> 0.5 Equilibrium):** The only zone where **Shorts** are permitted.
+
+---
+
+## The Re-Entry Playbook: Joining a Trend After Missing the Sweep
+
+When you miss the absolute bottom sweep (the HTF SFP at the Range Low) and the price starts expanding, use this playbook to join the trend safely without getting chopped up by mid-range internal noise:
+
+### 1. Filter the Noise (Context First, LTF Second)
+* **The Rule:** Map your trading ranges and POIs **only on the HTF/Context timeframe (4H or 1H)**.
+* **The Discipline:** Ignore the minor 15M/5M internal ranges and pullbacks while the price is expanding. Only zoom in to the LTF once the price has pulled back into a confirmed 4H/1H POI.
+
+### 2. Wait for the Displacement Leg (SOP 1)
+* Do not buy pullbacks that occur in the middle of a range. Wait for the market to prove it wants to expand by printing a clean **displacement leg**—an aggressive move that breaks out of the local range and closes a candle body above the previous swing high (**BOS / MSB**).
+* Once the BOS occurs, establish your new range boundaries:
+  * **Range Low (0):** The absolute lowest wick point that initiated the breakout leg.
+  * **Range High (1):** The absolute highest wick point reached before a clear 4H pullback begins.
+
+### 3. Map the POIs in the Discount Zone (SOP 4)
+* Draw the **0.5 Equilibrium** line. Under **SOP 4**, longs are strictly forbidden in the Premium zone (> 0.5). You must wait for the price to retrace into the **Discount zone (< 0.5)**.
+* Map these three valid POIs inside the Discount zone:
+  * **The Origin Order Block (OB):** The last bearish candle before the breakout leg started.
+  * **The Fair Value Gap (FVGs):** Imbalance zones inside the displacement leg that sit in discount.
+  * **The Breaker Block:** A broken bearish order block that now acts as demand (support) upon retest.
+
+### 4. Execute with LTF Confirmation (A-Tier Setup)
+* Once price retraces into your discount POI, zoom in to the 15M/5M timeframe and execute:
+  1. **LTF Sweep:** Wait for the price to wick below local minor wicks inside the POI and close back inside (grabbing internal stops).
+  2. **LTF MSB:** Wait for a candle body to close above the last local lower high.
+  3. **Entry:** Place a limit order at the new LTF OB/FVG.
+
+### 5. Trading the Range Rotation Pathway (If You Miss the Extreme)
+* **The Rule:** If you miss the initial sweep at the Range High (RH) or Range Low (RL), do not trade the internal space as a sideways market. Instead, trade the **rotation leg** as a local trend moving from one extreme to the other.
+* **The Process:**
+  1. **Confirm the Rotation:** Wait for a 4H/1H BOS of the first major internal swing level after the sweep. This confirms rotation is underway.
+  2. **Treat as a Local Trend:** Map the new displacement leg (from the sweep extreme to the new swing low/high).
+  3. **Find the POI in Premium/Discount:** Draw the local equilibrium of the new leg. If price is rotating down, look for a Bear OB/FVG in the *Premium* zone of this local leg. If rotating up, look for a Bull OB/FVG in the *Discount* zone of this local leg.
+  4. **LTF Entry & Target:** Execute on the 15M/5M pullback into this POI using standard LTF SFP + MSB rules, targeting the macro Range Extreme.
+
+---
+
 ## Tier Quick-Reference
 
 | Tier | HTF Sweep | HTF + LTF Aligned | LTF FVG+OB Confluence | LTF Sweep | Win Rate (Backtest) | Challenge Eligible |
@@ -165,4 +240,4 @@ Before submitting any trade entry, run through this checklist:
 
 ---
 
-*Last Updated: 2026-04-10 — Based on live trading session analysis and challenge post-mortems.*
+*Last Updated: 2026-08-08 — Added the Re-Entry Playbook based on live session analysis and structure conflict mortems.*

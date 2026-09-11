@@ -259,6 +259,260 @@
             color: var(--bear);
         }
 
+        /* Disabled trade styling */
+        .list-card.disabled-trade {
+            opacity: 0.45;
+            border-color: rgba(255,255,255,0.04);
+            filter: grayscale(60%);
+        }
+        .list-card.disabled-trade:hover {
+            opacity: 0.65;
+        }
+        .card-disabled-badge {
+            font-size: 0.6rem;
+            color: #6b7280;
+            background: rgba(107,114,128,0.12);
+            border: 1px solid rgba(107,114,128,0.2);
+            border-radius: 4px;
+            padding: 2px 5px;
+            font-weight: 700;
+            letter-spacing: 0.04em;
+        }
+        .manual-badge {
+            font-size: 0.6rem;
+            color: #a78bfa;
+            background: rgba(167,139,250,0.1);
+            border: 1px solid rgba(167,139,250,0.25);
+            border-radius: 4px;
+            padding: 2px 5px;
+            font-weight: 700;
+        }
+
+        /* Trade action buttons row */
+        .card-actions {
+            display: flex;
+            gap: 6px;
+            margin-top: 10px;
+            padding-top: 8px;
+            border-top: 1px solid var(--border);
+        }
+        .card-action-btn {
+            flex: 1;
+            padding: 5px 0;
+            font-size: 0.68rem;
+            font-weight: 600;
+            border-radius: 6px;
+            cursor: pointer;
+            border: 1px solid var(--border);
+            background: transparent;
+            color: var(--text-dim);
+            transition: all 0.18s;
+            font-family: 'Outfit', sans-serif;
+        }
+        .card-action-btn:hover { background: rgba(255,255,255,0.06); color: var(--text-main); }
+        .btn-disable { border-color: rgba(107,114,128,0.3); }
+        .btn-disable:hover { border-color: #6b7280; color: #9ca3af; }
+        .btn-disable.is-disabled { border-color: rgba(34,197,94,0.3); color: var(--bull); }
+        .btn-disable.is-disabled:hover { background: rgba(34,197,94,0.08); }
+        .btn-close-trade { border-color: rgba(239,68,68,0.25); color: #f87171; }
+        .btn-close-trade:hover { background: rgba(239,68,68,0.08); border-color: var(--bear); }
+        .btn-view { border-color: rgba(59,130,246,0.25); color: #60a5fa; }
+        .btn-view:hover { background: rgba(59,130,246,0.08); border-color: var(--accent); }
+
+        /* Add Trade button in sidebar header */
+        .sidebar-header {
+            display: flex;
+            align-items: center;
+            padding: 10px 10px 0;
+            gap: 8px;
+        }
+        .btn-add-trade {
+            margin-left: auto;
+            padding: 6px 12px;
+            background: rgba(59,130,246,0.12);
+            border: 1px solid rgba(59,130,246,0.35);
+            border-radius: 8px;
+            color: var(--accent);
+            cursor: pointer;
+            font-size: 0.75rem;
+            font-weight: 600;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            font-family: 'Outfit', sans-serif;
+            white-space: nowrap;
+        }
+        .btn-add-trade:hover {
+            background: rgba(59,130,246,0.22);
+            border-color: var(--accent);
+            box-shadow: 0 0 10px var(--accent-glow);
+        }
+
+        /* MODAL OVERLAY */
+        .modal-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.65);
+            backdrop-filter: blur(4px);
+            z-index: 200;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.22s;
+        }
+        .modal-overlay.open {
+            opacity: 1;
+            pointer-events: all;
+        }
+        .modal-box {
+            background: #0d0d14;
+            border: 1px solid rgba(255,255,255,0.12);
+            border-radius: 16px;
+            width: 440px;
+            max-width: 95vw;
+            padding: 28px;
+            position: relative;
+            transform: translateY(12px);
+            transition: transform 0.22s;
+            box-shadow: 0 25px 60px rgba(0,0,0,0.6);
+        }
+        .modal-overlay.open .modal-box {
+            transform: translateY(0);
+        }
+        .modal-title {
+            font-size: 1.1rem;
+            font-weight: 700;
+            margin-bottom: 20px;
+            color: var(--text-main);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .modal-close {
+            position: absolute;
+            top: 16px; right: 18px;
+            background: none;
+            border: none;
+            color: var(--text-dim);
+            font-size: 1.3rem;
+            cursor: pointer;
+            line-height: 1;
+            transition: color 0.15s;
+        }
+        .modal-close:hover { color: var(--text-main); }
+        .form-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+        .form-grid.single { grid-template-columns: 1fr; }
+        .form-group { display: flex; flex-direction: column; gap: 5px; }
+        .form-group label {
+            font-size: 0.7rem;
+            color: var(--text-dim);
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            font-weight: 600;
+        }
+        .form-group input, .form-group select {
+            background: rgba(255,255,255,0.04);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            color: var(--text-main);
+            padding: 9px 12px;
+            font-size: 0.85rem;
+            font-family: 'Outfit', sans-serif;
+            outline: none;
+            transition: border-color 0.18s;
+        }
+        .form-group input:focus, .form-group select:focus {
+            border-color: var(--accent);
+        }
+        .form-group select option { background: #0d0d14; }
+        .form-sep {
+            height: 1px;
+            background: var(--border);
+            margin: 4px 0 16px;
+        }
+        .modal-actions {
+            display: flex;
+            gap: 10px;
+            margin-top: 4px;
+        }
+        .btn-modal-cancel {
+            flex: 1;
+            padding: 10px;
+            background: transparent;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            color: var(--text-dim);
+            cursor: pointer;
+            font-size: 0.85rem;
+            font-family: 'Outfit', sans-serif;
+            transition: all 0.18s;
+        }
+        .btn-modal-cancel:hover { border-color: rgba(255,255,255,0.2); color: var(--text-main); }
+        .btn-modal-submit {
+            flex: 2;
+            padding: 10px;
+            background: var(--accent);
+            border: none;
+            border-radius: 8px;
+            color: white;
+            cursor: pointer;
+            font-size: 0.85rem;
+            font-weight: 600;
+            font-family: 'Outfit', sans-serif;
+            transition: all 0.18s;
+        }
+        .btn-modal-submit:hover { background: #2563eb; box-shadow: 0 0 15px var(--accent-glow); }
+        .btn-modal-submit.danger { background: var(--bear); }
+        .btn-modal-submit.danger:hover { background: #dc2626; box-shadow: 0 0 15px rgba(239,68,68,0.35); }
+
+        /* TOAST */
+        #toast-container {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            z-index: 999;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            pointer-events: none;
+        }
+        .toast {
+            background: rgba(20,20,30,0.95);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 11px 18px;
+            font-size: 0.82rem;
+            color: var(--text-main);
+            min-width: 220px;
+            backdrop-filter: blur(10px);
+            animation: toastIn 0.25s ease forwards;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .toast.success { border-color: rgba(34,197,94,0.4); }
+        .toast.error { border-color: rgba(239,68,68,0.4); }
+        .toast-dot {
+            width: 7px; height: 7px;
+            border-radius: 50%;
+            flex-shrink: 0;
+        }
+        .toast.success .toast-dot { background: var(--bull); }
+        .toast.error .toast-dot { background: var(--bear); }
+        .toast.info .toast-dot { background: var(--accent); }
+        @keyframes toastIn {
+            from { opacity: 0; transform: translateY(8px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+
         /* CHART VIEW */
         main {
             flex: 1;
@@ -375,11 +629,18 @@
 
     <div class="app-container">
         <aside>
-            <div class="side-tabs">
-                <button class="tab-btn active" id="tab-open" onclick="switchSideTab('open')">Open</button>
-                <button class="tab-btn" id="tab-pending" onclick="switchSideTab('pending')">Pending</button>
-                <button class="tab-btn" id="tab-history" onclick="switchSideTab('history')">History</button>
+            <div class="sidebar-header">
+                <div class="side-tabs" style="flex:1; padding:0; border:none; gap:6px; display:flex;">
+                    <button class="tab-btn active" id="tab-open" onclick="switchSideTab('open')">Open</button>
+                    <button class="tab-btn" id="tab-pending" onclick="switchSideTab('pending')">Pending</button>
+                    <button class="tab-btn" id="tab-history" onclick="switchSideTab('history')">History</button>
+                </div>
+                <button class="btn-add-trade" id="btn-add-trade" onclick="openAddModal()">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                    Add Trade
+                </button>
             </div>
+            <div style="height:10px;"></div>
             <div class="side-scroll" id="sidebar-list">
                 <!-- Cards will be injected here -->
             </div>
@@ -404,6 +665,106 @@
         </main>
     </div>
 
+    <!-- ========== ADD TRADE MODAL ========== -->
+    <div class="modal-overlay" id="add-modal" onclick="handleOverlayClick(event, 'add-modal')">
+        <div class="modal-box">
+            <button class="modal-close" onclick="closeModal('add-modal')">&#x2715;</button>
+            <div class="modal-title">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" stroke-width="3"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                Add Manual Trade
+            </div>
+            <div class="form-grid">
+                <div class="form-group">
+                    <label>Symbol</label>
+                    <input id="at-symbol" type="text" placeholder="BTC/USDT" value="BTC/USDT">
+                </div>
+                <div class="form-group">
+                    <label>Direction</label>
+                    <select id="at-direction">
+                        <option value="LONG">LONG</option>
+                        <option value="SHORT">SHORT</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Entry Price</label>
+                    <input id="at-entry" type="number" step="any" placeholder="e.g. 67000">
+                </div>
+                <div class="form-group">
+                    <label>Risk ($)</label>
+                    <input id="at-risk" type="number" step="any" placeholder="35" value="35">
+                </div>
+            </div>
+            <div class="form-grid">
+                <div class="form-group">
+                    <label>Stop Loss</label>
+                    <input id="at-sl" type="number" step="any" placeholder="e.g. 66000">
+                </div>
+                <div class="form-group">
+                    <label>Take Profit</label>
+                    <input id="at-tp" type="number" step="any" placeholder="e.g. 69000">
+                </div>
+            </div>
+            <div class="form-sep"></div>
+            <div class="form-grid">
+                <div class="form-group">
+                    <label>Setup Tier</label>
+                    <select id="at-tier">
+                        <option value="A+">A+</option>
+                        <option value="A">A</option>
+                        <option value="B" selected>B</option>
+                        <option value="C">C</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Session</label>
+                    <select id="at-session">
+                        <option value="london_open">London Open</option>
+                        <option value="london_close">London Close</option>
+                        <option value="ny_open">NY Open</option>
+                        <option value="ny_close">NY Close</option>
+                        <option value="asian">Asian</option>
+                        <option value="manual">Manual</option>
+                    </select>
+                </div>
+            </div>
+            <div class="form-grid single">
+                <div class="form-group">
+                    <label>Notes</label>
+                    <input id="at-notes" type="text" placeholder="Optional notes...">
+                </div>
+            </div>
+            <div class="modal-actions">
+                <button class="btn-modal-cancel" onclick="closeModal('add-modal')">Cancel</button>
+                <button class="btn-modal-submit" onclick="submitAddTrade()">Add Trade</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========== CLOSE TRADE MODAL ========== -->
+    <div class="modal-overlay" id="close-modal" onclick="handleOverlayClick(event, 'close-modal')">
+        <div class="modal-box">
+            <button class="modal-close" onclick="closeModal('close-modal')">&#x2715;</button>
+            <div class="modal-title">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="3"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+                Close Trade Manually
+            </div>
+            <p id="close-modal-info" style="font-size:0.82rem; color:var(--text-dim); margin: 0 0 16px;">Enter the exit price to close this trade.</p>
+            <div class="form-grid single">
+                <div class="form-group">
+                    <label>Exit Price</label>
+                    <input id="ct-exit-price" type="number" step="any" placeholder="Exit price">
+                </div>
+            </div>
+            <div class="modal-actions">
+                <button class="btn-modal-cancel" onclick="closeModal('close-modal')">Cancel</button>
+                <button class="btn-modal-submit danger" onclick="submitCloseTrade()">Close Trade</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- TOAST CONTAINER -->
+    <div id="toast-container"></div>
+
     <script>
         // --- GLOBAL ERROR HANDLING ---
         window.onerror = function (msg, url, line, col, error) {
@@ -423,7 +784,138 @@
         let activeSymbol = "BTC/USDT";
         let activeTf = "15m";
         let sideTab = "open";
+        let pendingCloseTradeId = null;
 
+        // ============================================================
+        //  TOAST
+        // ============================================================
+        function showToast(msg, type = 'success') {
+            const tc = document.getElementById('toast-container');
+            const t = document.createElement('div');
+            t.className = `toast ${type}`;
+            t.innerHTML = `<div class="toast-dot"></div>${msg}`;
+            tc.appendChild(t);
+            setTimeout(() => t.remove(), 3500);
+        }
+
+        // ============================================================
+        //  MODAL HELPERS
+        // ============================================================
+        function openModal(id) { document.getElementById(id).classList.add('open'); }
+        function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+        function handleOverlayClick(e, id) { if (e.target === e.currentTarget) closeModal(id); }
+
+        function openAddModal() { openModal('add-modal'); }
+
+        // ============================================================
+        //  ADD TRADE
+        // ============================================================
+        async function submitAddTrade() {
+            const symbol = document.getElementById('at-symbol').value.trim().toUpperCase();
+            const direction = document.getElementById('at-direction').value;
+            const entry = parseFloat(document.getElementById('at-entry').value);
+            const sl = parseFloat(document.getElementById('at-sl').value);
+            const tp = parseFloat(document.getElementById('at-tp').value);
+            const risk = parseFloat(document.getElementById('at-risk').value) || 35;
+            const tier = document.getElementById('at-tier').value;
+            const session = document.getElementById('at-session').value;
+            const notes = document.getElementById('at-notes').value.trim();
+
+            if (!symbol || isNaN(entry) || isNaN(sl) || isNaN(tp)) {
+                showToast('Fill in all required price fields.', 'error');
+                return;
+            }
+            try {
+                const r = await fetch('/api/trade/add', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ symbol, direction, entry_price: entry, sl_price: sl, tp_price: tp,
+                        trade_risk: risk, setup_tier: tier, session, notes })
+                });
+                const data = await r.json();
+                if (data.ok) {
+                    showToast(`Trade ${data.trade_id} added successfully!`, 'success');
+                    closeModal('add-modal');
+                    await syncData();
+                    // Auto-focus new trade on chart
+                    const newTrade = (state.open_trades || []).find(t => t.trade_id === data.trade_id);
+                    if (newTrade) focusTrade(newTrade);
+                } else {
+                    showToast(`Error: ${data.error}`, 'error');
+                }
+            } catch (e) {
+                showToast('Network error adding trade.', 'error');
+            }
+        }
+
+        // ============================================================
+        //  TOGGLE DISABLE
+        // ============================================================
+        async function toggleTrade(e, trade_id) {
+            e.stopPropagation();
+            try {
+                const r = await fetch('/api/trade/toggle', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ trade_id })
+                });
+                const data = await r.json();
+                if (data.ok) {
+                    await syncData();
+                    // Find trade to report status
+                    const allTrades = [...(state.open_trades || []), ...(state.pending_trades || [])];
+                    const t = allTrades.find(x => x.trade_id === trade_id);
+                    showToast(`Trade ${trade_id} ${t && t.disabled ? 'disabled' : 'enabled'}.`, 'info');
+                } else {
+                    showToast(`Error: ${data.error}`, 'error');
+                }
+            } catch (e) {
+                showToast('Network error toggling trade.', 'error');
+            }
+        }
+
+        // ============================================================
+        //  CLOSE TRADE
+        // ============================================================
+        function openCloseModal(e, trade) {
+            e.stopPropagation();
+            pendingCloseTradeId = trade.trade_id;
+            document.getElementById('close-modal-info').innerText =
+                `${trade.symbol} ${trade.direction}  |  Entry: ${trade.entry_price.toLocaleString()}  |  SL: ${trade.sl_price.toLocaleString()}  |  TP: ${trade.tp_price.toLocaleString()}`;
+            document.getElementById('ct-exit-price').value = '';
+            openModal('close-modal');
+        }
+
+        async function submitCloseTrade() {
+            const exitPrice = parseFloat(document.getElementById('ct-exit-price').value);
+            if (isNaN(exitPrice) || exitPrice <= 0) {
+                showToast('Enter a valid exit price.', 'error');
+                return;
+            }
+            try {
+                const r = await fetch('/api/trade/close', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ trade_id: pendingCloseTradeId, exit_price: exitPrice })
+                });
+                const data = await r.json();
+                if (data.ok) {
+                    const pnl = data.pnl_usd;
+                    showToast(`Trade closed! P&L: ${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)}`, pnl >= 0 ? 'success' : 'error');
+                    closeModal('close-modal');
+                    pendingCloseTradeId = null;
+                    await syncData();
+                } else {
+                    showToast(`Error: ${data.error}`, 'error');
+                }
+            } catch (e) {
+                showToast('Network error closing trade.', 'error');
+            }
+        }
+
+        // ============================================================
+        //  CHART INIT
+        // ============================================================
         function initChart() {
             const container = document.getElementById('chart-container');
             if (!container) return;
@@ -451,7 +943,6 @@
                     rightPriceScale: { borderColor: 'rgba(255,255,255,0.08)' }
                 });
 
-                // Use the most compatible way to add series
                 candleSeries = chart.addCandlestickSeries({
                     upColor: '#22c55e', downColor: '#ef4444', borderVisible: false,
                     wickUpColor: '#22c55e', wickDownColor: '#ef4444'
@@ -480,14 +971,15 @@
             }
         }
 
+        // ============================================================
+        //  DATA SYNC
+        // ============================================================
         async function syncData() {
-            console.log("Syncing challenge data...");
             try {
                 const [sReq, tReq] = await Promise.all([fetch('/api/status'), fetch('/api/trades')]);
                 if (!sReq.ok || !tReq.ok) throw new Error("API request failed");
                 state = await sReq.json();
                 closedTrades = await tReq.json();
-                console.log("Data synced:", state.balance);
                 updateDashboard();
                 renderSidebar();
             } catch (e) { console.error("Sync failed", e); }
@@ -500,20 +992,21 @@
             document.getElementById('stat-pnl').innerText = `${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)}`;
             document.getElementById('stat-pnl').className = `stat-value ${pnl >= 0 ? 'up' : 'down'}`;
 
-            const total = state.total_trades || 0;
+            const closedCount = (closedTrades || []).length;
             const wins = state.wins || 0;
-            const wr = total > 0 ? (wins / total * 100).toFixed(1) : "0.0";
+            const wr = closedCount > 0 ? (wins / closedCount * 100).toFixed(1) : "0.0";
             document.getElementById('stat-wr').innerText = `${wr}%`;
 
-            // Progress
             const target = 5500;
-            const floor = 4700;
             let progPercent = ((bal - 5000) / (target - 5000)) * 100;
             if (progPercent < 0) progPercent = 0;
             document.getElementById('progress-bar').style.width = `${Math.min(100, progPercent)}%`;
             document.getElementById('progress-text').innerText = `Challenge Progress: ${Math.floor(progPercent)}%`;
         }
 
+        // ============================================================
+        //  SIDEBAR RENDER
+        // ============================================================
         function renderSidebar() {
             const list = document.getElementById('sidebar-list');
             list.innerHTML = '';
@@ -529,43 +1022,79 @@
             }
 
             source.forEach(t => {
+                const isDisabled = t.disabled === true;
+                const isManual = t.manual === true;
+                const isHistory = sideTab === 'history';
+                const isInteractive = !isHistory; // open or pending
+
                 const card = document.createElement('div');
-                card.className = `list-card ${activeSymbol === t.symbol ? 'active' : ''}`;
+                card.className = `list-card${activeSymbol === t.symbol ? ' active' : ''}${isDisabled ? ' disabled-trade' : ''}`;
+
                 const dirTag = t.direction === 'LONG' ? 'tag-long' : 'tag-short';
                 const tier = t.setup_tier || "B";
                 const tierClass = tier.includes('A') ? 'card-tier Aplus' : 'card-tier';
 
-                // Result / PnL info for history
+                // Badges
+                let badges = '';
+                if (isDisabled) badges += `<span class="card-disabled-badge">PAUSED</span>`;
+                if (isManual) badges += `<span class="manual-badge">MANUAL</span>`;
+
+                // PnL for history
                 let pnlInfo = "";
-                if (sideTab === 'history') {
+                if (isHistory) {
                     const res = t.result || (t.pnl_usd >= 0 ? 'WIN' : 'LOSS');
                     const val = t.pnl_usd || 0;
-                    pnlInfo = `<span class="card-pnl ${val >= 0 ? 'up' : 'down'}">${res} ($${val > 0 ? '+' : ''}${val})</span>`;
+                    pnlInfo = `<span class="card-pnl ${val >= 0 ? 'up' : 'down'}">${res} (${val >= 0 ? '+' : ''}$${val})</span>`;
+                }
+
+                // Action buttons for open/pending
+                let actionsHtml = '';
+                if (isInteractive) {
+                    const disableBtnClass = `card-action-btn btn-disable${isDisabled ? ' is-disabled' : ''}`;
+                    const disableBtnLabel = isDisabled ? '&#9654; Enable' : '&#9646;&#9646; Pause';
+                    actionsHtml = `
+                        <div class="card-actions" onclick="event.stopPropagation()">
+                            <button class="${disableBtnClass}" onclick="toggleTrade(event, '${t.trade_id}')">${disableBtnLabel}</button>
+                            ${sideTab === 'open' ? `<button class="card-action-btn btn-close-trade" onclick="openCloseModal(event, ${JSON.stringify(t).replace(/"/g, '&quot;')})">&#x2715; Close</button>` : ''}
+                            <button class="card-action-btn btn-view" onclick="event.stopPropagation(); focusTrade(${JSON.stringify(t).replace(/"/g, '&quot;')})">&#9654; View</button>
+                        </div>`;
                 }
 
                 card.innerHTML = `
                     <div class="card-header">
-                        <div class="card-symbol">${t.symbol}</div>
+                        <div style="display:flex; align-items:center; gap:6px;">
+                            <div class="card-symbol">${t.symbol}</div>
+                            ${badges}
+                        </div>
                         <div class="${tierClass}">${tier}</div>
                     </div>
                     <div class="card-details">
                         <span class="side-tag ${dirTag}">${t.direction}</span>
-                        <span>@ ${t.entry_price.toLocaleString()}</span>
+                        <span>Entry: ${t.entry_price.toLocaleString()}</span>
                         ${pnlInfo}
                     </div>
+                    ${isInteractive ? `<div style="font-size:0.7rem; color:var(--text-dim); margin-top:5px;">SL: ${t.sl_price?.toLocaleString() ?? '—'}  &nbsp;|&nbsp;  TP: ${t.tp_price?.toLocaleString() ?? '—'}</div>` : ''}
+                    ${actionsHtml}
                 `;
-                card.onclick = () => focusTrade(t);
+
+                if (!isInteractive) {
+                    card.onclick = () => focusTrade(t);
+                }
                 list.appendChild(card);
             });
         }
 
         async function focusTrade(trade) {
+            if (typeof trade === 'string') trade = JSON.parse(trade);
             activeSymbol = trade.symbol;
             renderSidebar();
             await loadCandles(trade.symbol, activeTf);
             drawPriceLines(trade);
         }
 
+        // ============================================================
+        //  CANDLE LOADER
+        // ============================================================
         async function loadCandles(symbol, tf) {
             console.log(`Loading candles for ${symbol} @ ${tf}...`);
             const startTime = Date.now();
@@ -574,7 +1103,6 @@
             document.getElementById('loader-msg').innerText = `Fetching ${symbol} ${tf} candles...`;
 
             try {
-                // 1. Fetch Candles
                 const cResp = await fetch(`/api/live_candles?symbol=${symbol.replace('/', '_')}&tf=${tf}`);
                 const candles = await cResp.json();
 
@@ -586,23 +1114,16 @@
                     const uniqueCandles = [];
                     const seenTimes = new Set();
                     for (let c of candles) {
-                        if (!seenTimes.has(c.time)) {
-                            uniqueCandles.push(c);
-                            seenTimes.add(c.time);
-                        }
+                        if (!seenTimes.has(c.time)) { uniqueCandles.push(c); seenTimes.add(c.time); }
                     }
 
                     candleSeries.setData(uniqueCandles);
                     volumeSeries.setData(uniqueCandles.map(c => ({
-                        time: c.time,
-                        value: c.volume,
+                        time: c.time, value: c.volume,
                         color: c.close >= c.open ? 'rgba(34, 197, 94, 0.3)' : 'rgba(239, 68, 68, 0.3)'
                     })));
 
-                    console.log(`Loaded ${uniqueCandles.length} candles in ${Date.now() - startTime}ms.`);
                     document.getElementById('loader-msg').innerText = `Fetching institutional zones...`;
-
-                    // 2. Fetch Overlays (Sequential - Only after candles)
                     const oResp = await fetch(`/api/overlays?symbol=${symbol.replace('/', '_')}&tf=${tf}`);
                     const overlays = await oResp.json();
 
@@ -619,7 +1140,7 @@
                 }
                 chart.timeScale().fitContent();
             } catch (e) {
-                console.error("loadCandles generic error:", e);
+                console.error("loadCandles error:", e);
                 document.getElementById('loader-msg').innerText = "Network slow / Binance timeout.";
             }
 
@@ -633,7 +1154,6 @@
             if (!candleSeries) return;
             priceLines.forEach(l => candleSeries.removePriceLine(l));
             priceLines = [];
-
             priceLines.push(candleSeries.createPriceLine({ price: t.entry_price, color: '#3b82f6', lineWidth: 2, lineStyle: 0, axisLabelVisible: true, title: 'ENTRY' }));
             priceLines.push(candleSeries.createPriceLine({ price: t.sl_price, color: '#ef4444', lineWidth: 2, lineStyle: 2, axisLabelVisible: true, title: 'SL' }));
             priceLines.push(candleSeries.createPriceLine({ price: t.tp_price, color: '#22c55e', lineWidth: 2, lineStyle: 2, axisLabelVisible: true, title: 'TP' }));
@@ -655,7 +1175,7 @@
             initChart();
             syncData();
             loadCandles(activeSymbol, activeTf);
-            setInterval(syncData, 30000); // Sync every 30s for stability
+            setInterval(syncData, 30000);
         });
     </script>
 </body>
