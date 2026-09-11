@@ -38,6 +38,71 @@ You need to master how to read candle closes to determine whether a key price le
 
 ---
 
+## 4. MSS Confirmation: The Body Close Rule (NEW — Sep 10, 2026)
+The exact pivot point for an MSS is the **swing low/high that directly created the most recent structural extreme** (the sweep wick).
+*   **The Golden Rule:**
+    *   A **wick** below/above that pivot level = **another Sweep** (liquidity grab). Do NOT enter yet.
+    *   A **candle body close** beyond that pivot level = **True MSS confirmed**. This is your entry trigger.
+*   **Why this matters:** If you enter on a wick, you are entering before the algorithm has proven it wants to reverse. Waiting for the body close filters out fake moves and aligns you with the real institutional shift.
+*   **Practical Application:** Draw the red line at the swing low/high that created the high. Watch for a big displacement candle whose **body** closes clearly below/above it. That candle's FVG is your entry zone.
+
+---
+
+## 5. Nested Ranges & Internal Liquidity Layers (NEW — Sep 10, 2026)
+Markets operate in layers. Inside every Macro Range, there are smaller local ranges and internal liquidity pools.
+
+*   **When Price Sweeps the Macro Range High and Returns Inside:**
+    *   The **New Range High** = the extreme wick of the breakout (the SFP sweep wick).
+    *   The **Old Range High** = becomes **Internal Resistance / intermediate liquidity** (just a speed bump).
+    *   The **Old Range Low** = remains the **Ultimate Target** (macro external liquidity).
+
+*   **Internal Liquidity Pools** (the "speed bumps" between your entry and final target):
+    *   Every local equal low, swing low, or prior range low is a pool of resting stop-loss orders.
+    *   The algorithm will target each pool in sequence on its way to the Macro Range Low.
+    *   **These are your TP cascade levels**, not your final target.
+
+*   **The Playbook for Cascading TPs:**
+    1.  **TP 1 (Internal):** Close 40-50% at the first major internal liquidity cluster.
+    2.  **TP 2 (Internal):** Close another 30% at the next significant swing low.
+    3.  **TP 3 / Runner (External):** Leave 20% to target the absolute Macro Range Low, front-running it by ~0.5% (never set TP exactly on the line — retail buy limits sit there and the market can reverse just before).
+
+---
+
+## 6. Full Trade Execution Playbook (NEW — Sep 10, 2026)
+This is the complete, step-by-step process from idea to exit, applied to the HYPE short on Sep 9-10, 2026:
+
+```
+STEP 1 — HTF NARRATIVE (4H/Daily)
+   → Identify the Macro Range (RH at wick extreme, RL at wick extreme).
+   → Determine Premium (above 0.5 EQ) or Discount (below 0.5 EQ).
+   → Is price in a valid POI for reversal? (Shorts in Premium only. Longs in Discount only.)
+
+STEP 2 — MTF CONFIRMATION (1H)
+   → Did price sweep the Range High / Range Low? (SFP = wick out, body close back inside)
+   → Is there a 1H/4H Bearish MSS (body close below the swing low that created the sweep)?
+
+STEP 3 — LTF ENTRY TRIGGER (5M/15M)
+   → Find the exact pivot: the swing low/high that created the SFP wick.
+   → Wait for a BODY CLOSE past that level (not a wick).
+   → The displacement candle leaves an FVG. That FVG is your entry zone.
+
+STEP 4 — STOP LOSS PLACEMENT
+   → SL goes safely ABOVE the sweep wick tip + small buffer (0.10-0.15%).
+   → NEVER place SL at the exact wick tip or at an equal high/low. The MM will run it.
+
+STEP 5 — TRADE MANAGEMENT
+   → Once the first internal liquidity pool is swept in your direction, move SL to Breakeven.
+   → This creates a "free roll" — zero risk, unlimited upside.
+   → Scale out at internal liquidity levels (TP1), not just at the final target.
+
+STEP 6 — TAKE PROFIT
+   → TP1: First major internal liquidity cluster.
+   → TP2: Next significant swing low (local range low).
+   → Runner: Slightly above/below the absolute Macro Range Low/High (front-run by ~0.5%).
+```
+
+---
+
 ## 🛠️ Practical Backtesting Exercise
 To build your intuition, perform this exercise weekly on your charts:
 1.  Open any chart (e.g., BTC, ETH, SOL) on the 4H timeframe.

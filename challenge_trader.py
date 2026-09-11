@@ -1253,7 +1253,7 @@ def check_and_close_trades(state: Dict):
         state["closed_trades"].append(trade)
         log_trade_to_csv(trade)
 
-        pnl_label = f"+${abs(pnl):.2f}" if pnl >= 0 else f"-${abs(pnl):.2f}"
+        pnl_label = f"+${abs(total_pnl):.2f}" if total_pnl >= 0 else f"-${abs(total_pnl):.2f}"
         event(
             state,
             result,

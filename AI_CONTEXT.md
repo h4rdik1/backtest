@@ -138,10 +138,20 @@ e:/backtest/
 │   └── debug_regime.py             ← Debugs market regime classification output.
 │
 │
-└── 📜 history/                     ← Strategy version history (read-only reference).
-    ├── v1_base_smc.py              ← Original base SMC strategy (no tier system).
-    ├── v2_refined_confirmation.py  ← Added multi-TF confirmation layer.
-    └── v3_limit_expansion.py       ← Added limit order expansion logic.
+├── 📜 history/                     ← Strategy version history (read-only reference).
+│   ├── v1_base_smc.py              ← Original base SMC strategy (no tier system).
+│   ├── v2_refined_confirmation.py  ← Added multi-TF confirmation layer.
+│   └── v3_limit_expansion.py       ← Added limit order expansion logic.
+│
+└── 📓 notes/                       ← Knowledge Hub & Manual Trading Journals.
+    ├── MOC_Dashboard.md            ← Master Map of Content for the notes directory.
+    ├── Education/                  ← SMC theory, Wick selection, and Regime rules.
+    │   ├── SMC_Core_Concepts.md    ← ⭐ CORE THEORY: Body Closes, Nested Ranges, TP Cascading.
+    │   ├── Overlapping_Ranges_Playbook.md ← How to handle Master vs Internal ranges.
+    │   └── trader_diagnostic_notes.md ← Analysis of common trader errors and fixes.
+    ├── Journal/                    ← Post-mortems for manual trades.
+    │   └── manual_trades.md        ← Detailed logs of live manual setups (e.g. HYPE S-Tier short).
+    └── Strategies/                 ← Deep breakdowns of strategy logic.
 ```
 
 ---
@@ -170,3 +180,9 @@ e:/backtest/
 5. **Preserve `challenge_state.json` integrity.** The state file tracks open trades, balance, and visited signals. A corrupt state file breaks the live engine.
 6. **SFP requires a closed candle.** Never flag a wick as an SFP while the candle is still forming.
 7. **Debugging workflow:** Run `python tools/analyze_setup.py <SYMBOL>` for a full pre-trade breakdown. Run `python tools/dry_run_btc_sl.py` to test SL logic in isolation.
+8. **Body Close vs. Wick (MSS Validation):** A wick below a pivot is a sweep; a body close is a structural shift (MSS). AIs analyzing charts must explicitly look for body closes to validate an MSS.
+9. **Internal Liquidity Cascading:** When evaluating TPs, AIs should target internal liquidity pools (old range highs/lows, local swing points) for scaling out, with a final runner front-running the absolute Macro Range boundary by ~0.5%.
+
+
+## ?? Additional AI Context Files
+All extended project documentation (PRD, Architecture, Rules, Phases, Decisions, Testing) is located in the [.ai/](file:///e:/backtest/.ai/) folder. AI agents should refer to these files for specific granular rules.

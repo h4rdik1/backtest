@@ -93,5 +93,26 @@ This file records manual trades taken outside of the autonomous engine, tracking
 2.  **R:R Expectancy:** The target at $62,800.00 yields a **3.72R trade**, which has positive mathematical expectancy and keeps you fully compliant with the 2.0R rule.
 
 
+## 📉 Trade Log: HYPE/USDT Short (September 9-10, 2026)
 
+*   **Asset:** HYPE/USDT Perpetual
+*   **Direction:** Short
+*   **Setup Tier:** S-Tier (Macro Range Sweep + 1H SFP + 5M Bearish MSS + FVG Retest)
+*   **Context (4H):** Price swept the absolute Macro Range High ($89.50) with a wick up to $87.059. This confirmed a massive SFP in deep Premium territory.
+*   **Execution (5M):** 
+    *   Price dumped and pulled back into a 5M Bullish FVG.
+    *   5M Bearish MSS was confirmed when a strong red displacement candle closed its *body* below the local pivot low (~$86.47) that created the $87.059 high.
+    *   Initial Entry: $85.721.
+    *   Split Entry: Added to the position inside the FVG at $86.018 to improve average.
+*   **Trade Parameters:**
+    *   **Average Entry:** $85.848
+    *   **Stop Loss:** $87.08 (Anchored safely above the $87.059 sweep wick)
+    *   **TP 1 (Internal Liquidity):** $81.60
+    *   **TP 2 (Runner - External Liquidity):** $79.00 (Front-running the absolute $78.50 Range Low)
+    *   **Outcome:** Active/Winning. Massive drop overnight down to $83.316. SL moved to breakeven ($85.848) making it a risk-free trade.
 
+### 💡 Key Lessons & Post-Mortem
+1.  **Mark Price vs. Last Price (The Save):** The exchange mark price saved the initial tight stop ($87.012) from being triggered by the $87.059 wick. Corrected the SL immediately to $87.08 to properly anchor above the absolute wick.
+2.  **Averaging Up in a Winner:** Added to the position inside the confirmed FVG gap after the SFP was validated. This pulled the average entry up to $85.848, vastly improving the R:R ratio while keeping risk contained.
+3.  **Low Volume Grind (Asian Session):** When volume is low, price bleeds/grinds down with small choppy candles instead of massive displacement. Do not panic-close a trade due to choppy price action if the lower-high structure remains intact.
+4.  **Cascading Take Profits:** Identified that the Old Range High ($86.70) and local swing lows ($80.12) become internal liquidity targets. Scaling out at these levels guarantees profit during the journey to the Macro Range Low ($78.50).
