@@ -3,7 +3,11 @@ import sys
 import time
 import argparse
 from datetime import datetime
-from core.config import LIVE_WATCHLIST, ACTIVE_CHAIN, ALIGNMENTS, chain_label, format_price, LIVE_SCAN_INTERVAL
+from core.config import (
+    LIVE_WATCHLIST, ACTIVE_CHAIN, ALIGNMENTS, chain_label, format_price,
+    LIVE_SCAN_INTERVAL, ENABLE_CHART_SNAPSHOTS
+)
+from core.chart_worker import snapshot_trade_setup
 import challenge_trader
 
 def get_signal_for_symbol(symbol: str, chain_name: str, exchange_id: str = "binance"):
@@ -117,7 +121,12 @@ def run_scanner():
     parser = argparse.ArgumentParser()
     parser.add_argument("--symbols", nargs="+", default=LIVE_WATCHLIST)
     parser.add_argument("--interval", type=int, default=LIVE_SCAN_INTERVAL, help="Scan interval in seconds")
+    parser.add_argument("--charts", action="store_true", default=ENABLE_CHART_SNAPSHOTS, help="Enable automatic chart snapshots for detected setups")
+    parser.add_argument("--no-charts", dest="charts", action="store_false", help="Disable chart snapshots")
     args = parser.parse_args()
+
+    # Track signals we already charted so we do not re-chart the same zone every cycle
+    seen_chart_keys = set()
 
     # The chains we want to scan (from core config)
     chains_to_scan = list(ALIGNMENTS.keys())
@@ -178,6 +187,34 @@ def run_scanner():
                     
             for sig in deduped:
                 print_signal(sig)
+                if args.charts:
+                    sig_key = sig.get("signal_key")
+                    if sig_key and sig_key not in seen_chart_keys:
+                        df_ltf = sig.get("df_ltf")
+                        if df_ltf is not None and not df_ltf.empty:
+                            sym_clean = sig.get("symbol", "ASSET").replace("/", "_")
+                            chain_lbl  = sig.get("chain", "chain")
+                            direction  = sig.get("direction", "SIGNAL").lower()
+                            ts_str     = datetime.now().strftime("%Y%m%d_%H%M%S")
+                            from core.config import CHART_OUTPUT_DIR
+                            sig_folder = os.path.join(
+                                CHART_OUTPUT_DIR,
+                                f"scan_{sym_clean}_{chain_lbl}_{direction}_{ts_str}",
+                            )
+                            snapshot_trade_setup(
+                                df_ltf=df_ltf,
+                                sig=sig,
+                                df_htf=sig.get("df_htf"),
+                                df_mtf=sig.get("df_mtf"),
+                                folder=sig_folder,
+                                tf_names=(
+                                    sig.get("tf_htf", "HTF"),
+                                    sig.get("tf_mtf", "MTF"),
+                                    sig.get("tf_ltf", "LTF"),
+                                ),
+                            )
+                            seen_chart_keys.add(sig_key)
+                            print(f"      [CHART] Snapshots queued -> {sig_folder}/")
 
         print("\n" + "=" * 62)
         time.sleep(args.interval)
