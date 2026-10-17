@@ -21,6 +21,11 @@ EXCHANGE                  = "binance"
 LIVE_WATCHLIST            = ["BTC/USDT", "ETH/USDT", "SOL/USDT", "BNB/USDT"]
 LIVE_SCAN_INTERVAL        = 900       # Scan interval in seconds (15 minutes)
 
+# ── CHART SNAPSHOT SETTINGS ─────────────────────────
+ENABLE_CHART_SNAPSHOTS    = True      # Auto-generate chart snapshots on detected setups
+CHART_OUTPUT_DIR          = "images/signals"
+CHART_LOOKBACK_BARS       = 120       # Number of candles to plot on the chart
+
 
 # ---------------------------------------------------
 # TIMEFRAME ALIGNMENT CHAINS

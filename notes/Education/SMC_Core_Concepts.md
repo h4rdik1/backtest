@@ -103,6 +103,31 @@ STEP 6 — TAKE PROFIT
 
 ---
 
+## 7. The Sniper Entry Sequence: HTF to LTF (NEW — Sep 16, 2026)
+Never execute a trade based on LTF (15M/5M) sweeps until the HTF objective is completed. The HTF dictates the *location*, and the LTF dictates the *timing*.
+
+*   **Step 1: The HTF Anchor:** The 4H or 1H chart *must* tap your macro Order Block (OB) or sweep a macro liquidity line. If this hasn't happened, LTF action is just noise.
+*   **Step 2: The LTF Trap:** Once the HTF sweeps, zoom into the 15M/5M. Price will often bounce slightly, tricking early retail traders into buying. This creates a weak LTF support line.
+*   **Step 3: The LTF Sweep (The Spring):** Price drops one final time on the 15M/5M to sweep the stop-losses of those early retail buyers. This happens *during or just after* the HTF sweep.
+*   **Step 4: The LTF Trigger (MSB/CHoCH):** After the final LTF sweep, institutional volume steps in and breaks the 15M/5M lower high. **Wait for a full candle body close** above this line. That is your strict entry trigger for a Return to Origin (RTO) limit order.
+
+---
+
+## 8. Liquidity Resistance & Sponsored Order Blocks (NEW — Sep 16, 2026)
+This concept dictates exactly where your Stop Loss and Take Profit should go, and which Order Blocks are valid.
+
+*   **HRL (High Resistance Liquidity) = Strong Pivots:**
+    *   *What it is:* A swing high or low that swept liquidity (created an SFP) and then caused a major Market Structure Break (MSB).
+    *   *How to use it:* Institutions defend these levels. Place your **Stop Loss** safely behind HRL points.
+*   **LRL (Low Resistance Liquidity) = Weak Pivots:**
+    *   *What it is:* Swing points that failed to sweep liquidity or failed to cause a new MSB. Examples include Equal Highs/Lows (EQH/EQL) and clean trendlines.
+    *   *How to use it:* There is no institutional money defending these levels, making them magnetic. Use LRL as your **Take Profit / Draw on Liquidity** targets.
+*   **Sponsored Order Blocks:**
+    *   Not all Order Blocks are valid. A high-probability OB must form *immediately after* sweeping a major liquidity pool (stopping out retail) and must aggressively reverse to cause an MSB.
+    *   *Logic:* Institutions use the liquidity from the sweep to fill massive orders. That resulting Order Block is their "home base," and they will violently defend it.
+
+---
+
 ## 🛠️ Practical Backtesting Exercise
 To build your intuition, perform this exercise weekly on your charts:
 1.  Open any chart (e.g., BTC, ETH, SOL) on the 4H timeframe.

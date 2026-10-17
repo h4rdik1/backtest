@@ -46,3 +46,6 @@ data/ohlcv/
 
 # Auto-generated chart images
 images/
+
+# Local IDE & agent environment
+.agy/

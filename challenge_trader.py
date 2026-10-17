@@ -70,8 +70,11 @@ from core.config import (
     # Health check
     run_system_health_check,
     ACCOUNT_SIZE,
+    CHART_LOOKBACK_BARS,
+    CHART_OUTPUT_DIR,
 )
 from core.analysis import classify_regime, log_signal, get_current_session, compare_live_to_backtest
+from core.chart_worker import snapshot_trade_setup
 
 # -----------------------------------------------------------
 # CHALLENGE PARAMETERS
@@ -162,10 +165,29 @@ def load_state():
         return reset_state()
 
 
+class StateEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, pd.DataFrame):
+            return None
+        if isinstance(obj, pd.Series):
+            return obj.to_dict()
+        if hasattr(obj, "item"):
+            return obj.item()
+        if hasattr(obj, "tolist"):
+            return obj.tolist()
+        if isinstance(obj, (datetime, timedelta)):
+            return str(obj)
+        return super().default(obj)
+
+
 def save_state(state: Dict):
     os.makedirs("exports", exist_ok=True)
-    with open(STATE_FILE, "w") as f:
-        json.dump(state, f, indent=2)
+    tmp_file = STATE_FILE + ".tmp"
+    with open(tmp_file, "w") as f:
+        json.dump(state, f, indent=2, cls=StateEncoder)
+    os.replace(tmp_file, STATE_FILE)
+
+
 
 
 
@@ -738,6 +760,7 @@ def scan_for_signal(
 
     # Has price actually tapped the zone yet?
     anchor_bar = latest_fvg_idx if latest_fvg_idx != -1 else last_idx
+    anchor_time = df_ltf_df.index[anchor_bar]
     touched = False
     for k in range(anchor_bar + 1, last_idx + 1):
         lo = df_ltf_df["low"].iloc[k]
@@ -869,6 +892,28 @@ def scan_for_signal(
     # This allow taking the same zone on Daily and Scalp, but blocks duplicates on the same TF.
     signal_key = f"{chain_name}|{symbol}|{round(btm, 1)}|{round(top, 1)}"
 
+    # ─────────────────────────────────────────────────────────────
+    # SFP detail dicts for chart annotation
+    # find_latest_sfp() only returns (price, ts). The chart renderer
+    # needs the full detect_sfp_pattern() result to draw a minimal
+    # horizontal line precisely from the C2 bar to the sweep bar.
+    # ─────────────────────────────────────────────────────────────
+    htf_sfp_detail = None
+    if htf_sfp:
+        for _i in range(len(df_bias_df) - 1, max(5, len(df_bias_df) - 96) - 1, -1):
+            _pat = detect_sfp_pattern(df_bias_df, _i, is_long)
+            if _pat and _pat["confirmed"]:
+                htf_sfp_detail = _pat
+                break
+
+    ltf_sfp_detail = None
+    if ltf_sfp:
+        for _i in range(len(df_ltf_df) - 1, max(5, len(df_ltf_df) - 100) - 1, -1):
+            _pat = detect_sfp_pattern(df_ltf_df, _i, is_long)
+            if _pat and _pat["confirmed"]:
+                ltf_sfp_detail = _pat
+                break
+
     return {
         "symbol": symbol,
         "chain": chain_name,
@@ -876,18 +921,34 @@ def scan_for_signal(
         "entry_price": round(entry, 8),
         "sl_price": round(sl, 8),
         "tp_price": round(tp, 8),
-        "sl_type": sl_type,             # "protected_swing" or "fvg_boundary"
+        "sl_type": sl_type,
         "current_price": round(price_now, 8),
         "fvg_zone_low": round(btm, 8),
         "fvg_zone_high": round(top, 8),
         "anchor_type": anchor_type,
+        "anchor_time": str(anchor_time),
         "setup_tier": setup_tier,
         "regime": regime,
         "bias_reason": bias_reason,
         "exchange_id": exchange_id,
         "signal_key": signal_key,
         "is_counter_trend": (bias_dir == 1 and regime == "strong_bear") or (bias_dir == -1 and regime == "strong_bull"),
-        "metadata": get_market_metadata(df_ltf_df) # Training context/Quality meter
+        "metadata": get_market_metadata(df_ltf_df),
+        # ── Multi-TF DataFrames for chart_worker ─────────────────────────
+        "tf_htf": tf_context,
+        "tf_mtf": tf_bias,
+        "tf_ltf": tf_ltf,
+        "df_htf": df_context.tail(CHART_LOOKBACK_BARS).copy(),
+        "df_mtf": df_bias_df.tail(CHART_LOOKBACK_BARS).copy(),
+        "df_ltf": df_ltf_df.tail(CHART_LOOKBACK_BARS).copy(),
+        # ── SFP pattern details (for minimal line annotation) ────────────
+        "htf_sfp_detail": htf_sfp_detail,   # full pattern dict from bias TF
+        "ltf_sfp_detail": ltf_sfp_detail,   # full pattern dict from entry TF
+        "_full_df_len": {
+            "htf": len(df_context),
+            "mtf": len(df_bias_df),
+            "ltf": len(df_ltf_df),
+        },
     }
 
 def get_market_metadata(df: pd.DataFrame) -> Dict:
@@ -970,6 +1031,34 @@ def open_trade(state: Dict, signal: Dict) -> Dict:
     state["next_trade_id"] += 1
     state["total_trades"] += 1
     save_state(state)
+
+    # Auto-generate multi-TF chart snapshots for the opened trade.
+    # Each trade gets its own subfolder:  images/signals/{trade_id}_{symbol}/
+    #   htf_context.png  — big-picture structure
+    #   mtf_bias.png     — bias TF + HTF SFP annotation
+    #   ltf_entry.png    — entry TF + LTF SFP + Entry/SL/TP levels
+    df_ltf = signal.get("df_ltf")
+    if df_ltf is not None and not df_ltf.empty:
+        sym_clean = signal.get("symbol", "ASSET").replace("/", "_")
+        chain_lbl  = signal.get("chain", "chain")
+        direction  = signal.get("direction", "SIGNAL").lower()
+        trade_folder = os.path.join(
+            CHART_OUTPUT_DIR,
+            f"{tid}_{sym_clean}_{chain_lbl}_{direction}",
+        )
+        sig_with_tid = {**signal, "trade_id": tid}
+        snapshot_trade_setup(
+            df_ltf=df_ltf,
+            sig=sig_with_tid,
+            df_htf=signal.get("df_htf"),
+            df_mtf=signal.get("df_mtf"),
+            folder=trade_folder,
+            tf_names=(
+                signal.get("tf_htf", "HTF"),
+                signal.get("tf_mtf", "MTF"),
+                signal.get("tf_ltf", "LTF"),
+            ),
+        )
 
     event(
         state,
@@ -1349,7 +1438,8 @@ def check_pending_trades(state: Dict):
             continue
         try:
             now_dt = datetime.now()
-            exp_dt = datetime.strptime(pt["expires_at"], "%Y-%m-%d %H:%M:%S")
+            exp_str = pt.get("expires_at") or (now_dt + timedelta(hours=8)).strftime("%Y-%m-%d %H:%M:%S")
+            exp_dt = datetime.strptime(exp_str, "%Y-%m-%d %H:%M:%S")
             if now_dt >= exp_dt:
                 event(state, "EXPIRED", f"Pending {pt['symbol']} {pt['direction']} expired.")
                 continue
@@ -1561,7 +1651,8 @@ def run_scan(state: Dict, chains_to_scan: List[str]):
                                     already_pending = True
                                     break
                             if not already_pending:
-                                state.setdefault("pending_trades", []).append(sig)
+                                sig_store = {k: v for k, v in sig.items() if k != "df_ltf"}
+                                state.setdefault("pending_trades", []).append(sig_store)
                                 print(f"QUEUED PENDING {dire} @ {ent:.4f} (Cur: {cur:.4f})")
                             else:
                                 print(f"SKIP (already pending on symbol/zone)")
@@ -1635,7 +1726,15 @@ def print_final_report(state: Dict):
     if state["status"] == "PASSED":
         print("  *** CHALLENGE PASSED! ***  Target $5,500 reached!")
     elif state["status"] == "STOPPED":
-        print("  *** CHALLENGE STOPPED ***  Floor $4,700 hit. Review needed.")
+        reason = state.get("halt_reason", "unknown")
+        if reason == "trailing_drawdown":
+            print("  *** CHALLENGE STOPPED ***  Trailing drawdown limit hit. Review needed.")
+        elif reason == "weekly_loss_limit":
+            print("  *** CHALLENGE STOPPED ***  Weekly loss limit hit. Review needed.")
+        elif reason == "live_backtest_deviation":
+            print("  *** CHALLENGE STOPPED ***  Live vs Backtest deviation limit hit. Review needed.")
+        else:
+            print(f"  *** CHALLENGE STOPPED ***  Reason: {reason}. Review needed.")
     print()
 
 
