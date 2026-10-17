@@ -1,4 +1,4 @@
-# 💹 TTrades SMC Trading Engine (Phase 5 - April 2026 Institutional Upgrade)
+# Signal Engine (Phase 5 - April 2026 Institutional Upgrade)
 
 A professional-grade Python autonomous trading and live-monitoring framework for **Smart Money Concepts (SMC)**. This engine implements the **TTrades Tiered Scalping Model** using displacement-based **LuxAlgo FVG** detection, HTF institutional bias alignment, and Order Block (OB) confluence.
 
