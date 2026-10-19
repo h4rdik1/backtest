@@ -56,7 +56,7 @@ from core.config import (
     # Task 3 — Sessions
     SESSIONS, SESSION_MIN_TIER,
     # Task 4 — Break-even & trailing
-    BE_TRIGGER_R, PARTIAL_EXIT_R, PARTIAL_EXIT_PCT,
+    BE_TRIGGER_R, PARTIAL_EXIT_R, PARTIAL_EXIT_PCT, ENABLE_TRAILING_STOP,
     # Task 5 — Correlation
     CORRELATION_GROUPS,
     # Task 6 — Scoring / sizing
@@ -1225,7 +1225,7 @@ def check_and_close_trades(state: Dict):
                       f"Trailing now active. Balance: ${state['balance']:.2f}")
 
         # ── TASK 4: Trailing stop after 2R (move to each new swing point) ──
-        if trade.get("trailing_active", False):
+        if ENABLE_TRAILING_STOP and trade.get("trailing_active", False):
             # Use the last 5 bars to find the most recent LTF swing low (longs) / swing high (shorts)
             lookback_bars = df.tail(5)
             if direction == "LONG" and len(lookback_bars) >= 3:

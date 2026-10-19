@@ -49,3 +49,6 @@ images/
 
 # Local IDE & agent environment
 .agy/
+.agents/
+skills-lock.json
+graphify-out/

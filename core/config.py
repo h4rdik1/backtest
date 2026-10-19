@@ -182,6 +182,7 @@ BE_TRIGGER_R              = 1.5     # CHANGED from 1.8R — move SL to entry at 
 PARTIAL_EXIT_R            = 2.0     # Close 50% of position at 2R
 PARTIAL_EXIT_PCT          = 0.50    # Close this fraction of position at PARTIAL_EXIT_R
 TRAIL_AFTER_R             = 2.0     # After 2R, trail remaining 50% with LTF structure
+ENABLE_TRAILING_STOP      = False   # Master kill-switch: set True to re-enable trailing SL logic
 
 
 # ══════════════════════════════════════════════════════════════
