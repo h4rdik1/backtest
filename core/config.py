@@ -240,6 +240,7 @@ MAX_TRADE_DURATION = {
 # has changed in the market or our execution. We must detect
 # this early before significant damage is done.
 # ══════════════════════════════════════════════════════════════
+ENABLE_LIVE_BACKTEST_CHECK = False   # Set to True to enable automatic halting/warning on live vs backtest drift
 LIVE_BACKTEST_CHECK_N     = 20      # Run comparison every 20 completed live trades
 LIVE_BACKTEST_WARN_PCT    = 0.15    # 15% deviation → log warning
 LIVE_BACKTEST_HALT_PCT    = 0.25    # 25% deviation → halt trading and alert

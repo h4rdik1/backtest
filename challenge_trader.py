@@ -67,6 +67,7 @@ from core.config import (
     MAX_TRADE_DURATION,
     # Task 10 — Live vs backtest
     LIVE_BACKTEST_CHECK_N,
+    ENABLE_LIVE_BACKTEST_CHECK,
     # Health check
     run_system_health_check,
     ACCOUNT_SIZE,
@@ -1354,7 +1355,7 @@ def check_and_close_trades(state: Dict):
 
         # Task 10: After every N closed trades, compare live to backtest
         n_closed = len(state["closed_trades"])
-        if n_closed > 0 and n_closed % LIVE_BACKTEST_CHECK_N == 0:
+        if ENABLE_LIVE_BACKTEST_CHECK and n_closed > 0 and n_closed % LIVE_BACKTEST_CHECK_N == 0:
             _run_live_backtest_check(state)
 
     state["open_trades"] = still_open
@@ -1804,6 +1805,12 @@ def main():
     parser.add_argument(
         "--reset", action="store_true", help="Reset challenge state (fresh start)"
     )
+    parser.add_argument(
+        "--no-live-check", action="store_true", help="Disable live vs backtest drift comparison check"
+    )
+    parser.add_argument(
+        "--resume", action="store_true", help="Resume an existing challenge even if previously stopped"
+    )
     args = parser.parse_args()
 
     os.makedirs("exports", exist_ok=True)
@@ -1831,8 +1838,18 @@ def main():
         if k not in state:
             state[k] = v
 
+    if args.no_live_check:
+        import core.config
+        core.config.ENABLE_LIVE_BACKTEST_CHECK = False
+
+    if args.resume and state.get("status") == "STOPPED":
+        state["status"] = "ACTIVE"
+        state["halt_reason"] = None
+        save_state(state)
+        print("  [RESUME] Challenge unhalted and set back to ACTIVE.")
+
     if state["status"] not in ("ACTIVE", "WEEKLY_HALT"):
-        print(f"\n  Challenge already {state['status']}. Use --reset to start fresh.")
+        print(f"\n  Challenge already {state['status']}. Use --reset to start fresh or --resume to continue.")
         print_final_report(state)
         return
 
