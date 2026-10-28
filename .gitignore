@@ -52,3 +52,6 @@ images/
 .agents/
 skills-lock.json
 graphify-out/
+
+# Private Trading Journal & Watchlists
+notes/Journal/

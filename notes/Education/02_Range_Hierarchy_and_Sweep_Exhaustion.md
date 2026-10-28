@@ -44,3 +44,25 @@ At major range highs/supply blocks, the market will often wick above the level m
 3.  **The Max 2 Attempts Rule:** If you get a valid SFP trigger and enter, but the market wicks higher and stops you out:
     *   You are allowed **one re-entry** if a new, higher SFP prints with a new bearish CHoCH.
     *   If you get stopped out a second time, **stop trading that zone.** The market is preparing for a full trend expansion.
+
+---
+
+## Part 3: Marking Clean Ranges & Asset Decoupling (TAO & NEAR Case Studies)
+
+### 📐 The 3 Rules for Marking Clean Highs & Lows:
+1.  **Rule 1 (Origin of Displacement - The Floor):** A clean low is the exact candle origin that launched a violent upward displacement leg. Ignore internal wicks; anchor the 0.0 boundary to the true origin demand base.
+2.  **Rule 2 (The Isolated Naked High - The Ceiling):** Look for an obvious, isolated peak sitting in open air with clean space above it. This is where resting buy-stop liquidity (BSL) accumulates as an algorithmic magnet.
+3.  **Rule 3 (Asset Decoupling):** Every asset operates within its own algorithmic dealing range. An asset with a clean 4H range high sweep can dump independently (e.g., NEAR dropping 12% from $5.45 to $4.84) even if BTC/ETH are chopping.
+
+### 🪙 Case Study: TAO/USDT Active 4H Dealing Range (October 23, 2026)
+*   **Active Dealing Range:** **$252.00 (Floor / 0.0) — $282.00 (Ceiling / 1.0)**
+*   **Equilibrium (0.5 EQ):** **$267.00**
+*   **Floor Rationale:** Multiple violent accumulation launches occurred off **$252.00 – $254.00** across October (Oct 8, Oct 15, and Oct 19). This establishes $252.00 as a hardened structural floor.
+*   **Ceiling Rationale:** The peak at **$282.00** on Oct 21-22 is the undisputed dealing high of the current impulse leg.
+*   **Current Location:** Trading at **~$255.00** in **Deep Discount (< 0.5)**, tapping directly into the range floor.
+*   **The S-Tier Long Playbook:**
+    *   Wait for price to sweep beneath the $252.00 low (liquidity purge of resting sell-stops into $248–$250).
+    *   Wait for a **15M/1H SFP wick reclaim** and body close back above $252.00+.
+    *   Target 1: 0.5 Equilibrium at **$267.00 (+2.5R)**.
+    *   Target 2: Range High at **$282.00 (+5.0R)**.
+

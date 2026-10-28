@@ -65,9 +65,15 @@ e:/backtest/
 │
 │
 ├── 🟠 models/                      ← Trade setup detection and entry logic.
-│   └── backtest_cisd.py            ← Core setup model: FVG/OB touch entries, Enhanced
-│                                      Structural SL Finder (detects SFPs + prominent wicks),
-│                                      "visited_signals" deduplication to avoid re-trading zones.
+│   ├── backtest_cisd.py            ← Core setup model: FVG/OB touch entries, Enhanced
+│   │                                  Structural SL Finder (detects SFPs + prominent wicks),
+│   │                                  "visited_signals" deduplication to avoid re-trading zones.
+│   └── liquidity_transfer/         ← ⭐ CENTRALIZED LIQUIDITY TRANSFER MODEL.
+│       ├── backtest_liquidity_transfer.py ← HTF sweep + MSS/MSB + Breaker/FVG retest engine.
+│       ├── live_scanner_liquidity_transfer.py ← Real-time multi-TF scanner for transfer setups.
+│       ├── test_liquidity_transfer.py ← Unit tests for the liquidity transfer model logic.
+│       ├── decisions.md            ← Architecture and modeling decisions log.
+│       └── README.md               ← Setup rules, confirmation criteria, and execution guide.
 │
 │
 ├── 🟡 tools/                       ← Debugging, diagnostics, and visualization scripts.
@@ -146,9 +152,11 @@ e:/backtest/
 └── 📓 notes/                       ← Knowledge Hub & Manual Trading Journals.
     ├── MOC_Dashboard.md            ← Master Map of Content for the notes directory.
     ├── Education/                  ← SMC theory, Wick selection, and Regime rules.
-    │   ├── SMC_Core_Concepts.md    ← ⭐ CORE THEORY: Body Closes, Nested Ranges, TP Cascading.
-    │   ├── Overlapping_Ranges_Playbook.md ← How to handle Master vs Internal ranges.
-    │   └── trader_diagnostic_notes.md ← Analysis of common trader errors and fixes.
+    │   ├── 00_INDEX_SMC_Library.md ← Master index of all educational modules.
+    │   ├── 01_MASTER_SMC_GUIDE.md  ← ⭐ MASTER MANUAL: Core Laws, Daily Bias Engine, Strategy Model.
+    │   ├── 02_Range_Hierarchy_and_Sweep_Exhaustion.md ← Master vs Internal ranges & sweep traps.
+    │   ├── 03_Wick_Selection_and_Boundary_Rules.md   ← Absolute extremes & Wick Zone method.
+    │   └── 04_Trader_Diagnostics_and_Mistake_Fixes.md ← Diagnosis of past trader slip-ups.
     ├── Journal/                    ← Post-mortems for manual trades.
     │   └── manual_trades.md        ← Detailed logs of live manual setups (e.g. HYPE S-Tier short).
     └── Strategies/                 ← Deep breakdowns of strategy logic.
