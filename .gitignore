@@ -55,3 +55,15 @@ graphify-out/
 
 # Private Trading Journal & Watchlists
 notes/Journal/
+
+# Node / Frontend UI
+node_modules/
+frontend/node_modules/
+frontend/dist/
+frontend/dist-ssr/
+frontend/*.local
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
