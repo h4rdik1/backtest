@@ -91,9 +91,24 @@ DEFAULT_INTERVAL = 600      # 10 minutes
 # -----------------------------------------------------------
 # FILE PATHS
 # -----------------------------------------------------------
-STATE_FILE = "exports/challenge_state.json"
+STATE_FILE = "exports/challenge_state_cisd.json"
 TRADE_LOG = "exports/challenge_trades.csv"
-EVENT_LOG = "exports/challenge_events.txt"
+EVENT_LOG = "exports/challenge_events_cisd.txt"
+
+CURRENT_MODEL = "cisd"
+
+def set_model_paths(model_name: str = "cisd"):
+    """Dynamically set persistent state and log paths per model instance."""
+    global STATE_FILE, TRADE_LOG, EVENT_LOG, CURRENT_MODEL
+    CURRENT_MODEL = model_name
+    if model_name == "liquidity_transfer":
+        STATE_FILE = "exports/challenge_state_liquidity_transfer.json"
+        TRADE_LOG = "exports/liquidity_transfer_trades.csv"
+        EVENT_LOG = "exports/challenge_events_liquidity_transfer.txt"
+    else:
+        STATE_FILE = "exports/challenge_state_cisd.json"
+        TRADE_LOG = "exports/challenge_trades.csv"
+        EVENT_LOG = "exports/challenge_events_cisd.txt"
 
 TRADE_LOG_HEADERS = [
     "trade_id",
@@ -1788,6 +1803,13 @@ def _print_startup_summary(state: Dict):
 def main():
     parser = argparse.ArgumentParser(description="Paper Trading Challenge Engine")
     parser.add_argument(
+        "--model",
+        type=str,
+        default="cisd",
+        choices=["cisd", "liquidity_transfer"],
+        help="Model instance (cisd or liquidity_transfer)",
+    )
+    parser.add_argument(
         "--interval",
         type=int,
         default=DEFAULT_INTERVAL,
@@ -1812,6 +1834,7 @@ def main():
         "--resume", action="store_true", help="Resume an existing challenge even if previously stopped"
     )
     args = parser.parse_args()
+    set_model_paths(args.model)
 
     os.makedirs("exports", exist_ok=True)
 

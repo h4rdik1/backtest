@@ -49,4 +49,16 @@ Welcome to your study library. All core concepts, playbooks, and diagnostic fixe
 
 ---
 
-*Last Updated: October 20, 2026 — Centralized and numbered for instant navigation.*
+### 05. [System Implementation & Engineering Masterclass](file:///e:/backtest/notes/Education/05_System_Implementation_and_Engineering_Masterclass.md)
+* **Filename:** `05_System_Implementation_and_Engineering_Masterclass.md`
+* **Purpose:** Complete breakdown of the dual trading models, prop firm risk mathematics, and React + Python architecture.
+* **Key Topics:**
+  * CISD Engine (Displacement $>1.2\times$ ATR, OBs, FVGs, SFPs).
+  * Liquidity Transfer Model (4H Anchor $\rightarrow$ 15M MSS $\rightarrow$ 50% Consequent Encroachment Retest).
+  * Prop Firm Risk Laws ($6\%$ max trailing floor, $8\%$ weekly limit, daily trade caps).
+  * Position Management Formulas (Break-even at $1.5R$, 50% partial exit at $2.0R$).
+  * Full-stack Architecture (Vite proxy, schema adapters, TradingView Lightweight Charts v4 lifecycle).
+
+---
+
+*Last Updated: November 06, 2026 — Centralized and numbered for instant navigation.*
