@@ -7,7 +7,7 @@
 
 import { useState } from 'react';
 import { clsx } from 'clsx';
-import { ArrowUpRight, ArrowDownRight, Clock } from 'lucide-react';
+import { ArrowUpRight, ArrowDownRight, Clock, Info } from 'lucide-react';
 import { formatPnL } from '../../lib/math';
 import type { Trade } from '../../types';
 
@@ -17,6 +17,7 @@ interface TradeSidebarProps {
   closedTrades: Trade[];
   selectedId?: string;
   onSelect?: (trade: Trade) => void;
+  onInspect?: (trade: Trade) => void;
   accentColor: string;
 }
 
@@ -29,7 +30,7 @@ function TabBtn({ label, count, active, onClick, accent }: {
     <button
       onClick={onClick}
       className={clsx(
-        'flex-1 py-2 text-xs font-semibold flex items-center justify-center gap-1.5 rounded-md transition-all duration-150',
+        'flex-1 py-2 text-xs font-semibold flex items-center justify-center gap-1.5 rounded-md transition-all duration-150 cursor-pointer',
         active ? 'bg-white/10 text-white border border-white/10' : 'text-slate-400 hover:text-slate-200 hover:bg-white/5'
       )}
     >
@@ -44,7 +45,17 @@ function TabBtn({ label, count, active, onClick, accent }: {
   );
 }
 
-function TradeCard({ trade, selected, onSelect }: { trade: Trade; selected: boolean; onSelect?: () => void }) {
+function TradeCard({
+  trade,
+  selected,
+  onSelect,
+  onInspect,
+}: {
+  trade: Trade;
+  selected: boolean;
+  onSelect?: () => void;
+  onInspect?: () => void;
+}) {
   const isLong = trade.direction === 'LONG';
   const isWin = trade.result === 'WIN';
   const isLoss = trade.result === 'LOSS';
@@ -54,13 +65,13 @@ function TradeCard({ trade, selected, onSelect }: { trade: Trade; selected: bool
     <div
       onClick={onSelect}
       className={clsx(
-        'rounded-xl border p-3.5 cursor-pointer transition-all duration-150 group',
+        'rounded-xl border p-3.5 cursor-pointer transition-all duration-150 group relative',
         selected
-          ? 'bg-white/[0.06] border-blue-500/40'
+          ? 'bg-blue-500/[0.08] border-blue-500/60 shadow-lg shadow-blue-500/10 ring-1 ring-blue-500/30'
           : 'bg-[var(--bg-card)] border-[var(--border)] hover:bg-[var(--bg-hover)] hover:border-[var(--border-hover)]'
       )}
     >
-      {/* Row 1: direction badge + symbol + PnL */}
+      {/* Row 1: direction badge + symbol + PnL + Inspect button */}
       <div className="flex items-center justify-between gap-2 mb-2.5">
         <div className="flex items-center gap-2">
           <span
@@ -81,11 +92,26 @@ function TradeCard({ trade, selected, onSelect }: { trade: Trade; selected: bool
             </span>
           )}
         </div>
-        {isClosed && (
-          <span className={clsx('text-xs font-mono font-bold tabular-nums', isWin ? 'text-emerald-400' : isLoss ? 'text-rose-400' : 'text-slate-400')}>
-            {formatPnL(trade.pnlUsd)}
-          </span>
-        )}
+        <div className="flex items-center gap-2">
+          {isClosed && (
+            <span className={clsx('text-xs font-mono font-bold tabular-nums', isWin ? 'text-emerald-400' : isLoss ? 'text-rose-400' : 'text-slate-400')}>
+              {formatPnL(trade.pnlUsd)}
+            </span>
+          )}
+          {onInspect && (
+            <button
+              type="button"
+              title="Audit Trade Details"
+              onClick={(e) => {
+                e.stopPropagation();
+                onInspect();
+              }}
+              className="p-1 rounded text-slate-500 hover:text-slate-200 hover:bg-white/10 transition-colors cursor-pointer"
+            >
+              <Info size={13} />
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Row 2: price grid */}
@@ -104,17 +130,30 @@ function TradeCard({ trade, selected, onSelect }: { trade: Trade; selected: bool
         ))}
       </div>
 
-      {/* Row 3: timestamp + regime */}
+      {/* Row 3: timestamp + regime + active on chart pill */}
       <div className="flex items-center justify-between mt-2 text-[10px] text-slate-600">
         <span className="truncate max-w-[140px]">{trade.regime ?? trade.anchorType ?? '—'}</span>
-        <span className="font-mono shrink-0">{trade.openedAt.split(' ')[1] ?? trade.openedAt.slice(11, 16)}</span>
+        <div className="flex items-center gap-1.5">
+          {selected && (
+            <span className="text-[9px] font-mono font-bold text-sky-400 bg-sky-500/10 px-1.5 py-0.2 rounded border border-sky-500/20">
+              ON CHART
+            </span>
+          )}
+          <span className="font-mono shrink-0">{trade.openedAt.split(' ')[1] ?? trade.openedAt.slice(11, 16)}</span>
+        </div>
       </div>
     </div>
   );
 }
 
 export function TradeSidebar({
-  openTrades, pendingTrades, closedTrades, selectedId, onSelect, accentColor
+  openTrades,
+  pendingTrades,
+  closedTrades,
+  selectedId,
+  onSelect,
+  onInspect,
+  accentColor,
 }: TradeSidebarProps) {
   const [tab, setTab] = useState<Tab>('open');
 
@@ -150,6 +189,7 @@ export function TradeSidebar({
               trade={t}
               selected={t.id === selectedId}
               onSelect={() => onSelect?.(t)}
+              onInspect={() => onInspect?.(t)}
             />
           ))
         )}

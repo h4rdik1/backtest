@@ -35,10 +35,14 @@ function Dashboard() {
     return params.get('model') ?? DEFAULT_MODEL_ID;
   });
   const [timeframe, setTimeframe] = useState('15m');
-  const [selectedTrade, setSelectedTrade] = useState<Trade | undefined>();
+  const [selectedTradeId, setSelectedTradeId] = useState<string | undefined>();
+  const [selectedSymbol, setSelectedSymbol] = useState<string | undefined>();
+  const [inspectingTrade, setInspectingTrade] = useState<Trade | null>(null);
 
   const handleSelectTab = (tab: string) => {
     setActiveTab(tab);
+    setSelectedTradeId(undefined);
+    setSelectedSymbol(undefined);
     const url = new URL(window.location.href);
     url.searchParams.set('model', tab);
     window.history.replaceState({}, '', url.toString());
@@ -58,16 +62,49 @@ function Dashboard() {
     );
   }, [allChallenges]);
 
-  // Base price for mock fallback
-  const basePrice = useMemo(() => {
-    const sym = current?.openTrades[0]?.symbol ?? modelCfg.defaultSymbol;
-    if (sym.includes('SOL')) return 96.5;
-    if (sym.includes('ETH')) return 2600;
-    return 89_500; // BTC default
-  }, [current, modelCfg.defaultSymbol]);
+  // Aggregate all trades for the active challenge
+  const allTrades = useMemo(() => {
+    if (!current) return [];
+    return [...current.openTrades, ...current.pendingTrades, ...current.closedTrades];
+  }, [current]);
 
-  const symbol = current?.openTrades[0]?.symbol ?? modelCfg.defaultSymbol;
+  // Selected trade entity
+  const selectedTrade = useMemo(() => {
+    if (!selectedTradeId) return undefined;
+    return allTrades.find((t) => t.id === selectedTradeId);
+  }, [allTrades, selectedTradeId]);
+
+  const openTradeSymbol = current?.openTrades[0]?.symbol;
+  const defaultSymbol = modelCfg.defaultSymbol;
+
+  // Active symbol: explicit selection > selected trade's symbol > first open trade > default symbol
+  const symbol = useMemo(() => {
+    if (selectedSymbol) return selectedSymbol;
+    if (selectedTrade) return selectedTrade.symbol;
+    return openTradeSymbol ?? defaultSymbol;
+  }, [selectedSymbol, selectedTrade, openTradeSymbol, defaultSymbol]);
+
+  // Base price for realistic mock fallback
+  const basePrice = useMemo(() => {
+    if (symbol.includes('SOL')) return 145;
+    if (symbol.includes('ETH')) return 2650;
+    if (symbol.includes('BNB')) return 590;
+    return 89_500; // BTC default
+  }, [symbol]);
+
   const { candles, isLive } = useCandles(symbol, timeframe, basePrice);
+
+  const handleSelectTrade = (trade: Trade) => {
+    setSelectedTradeId(trade.id);
+    setSelectedSymbol(trade.symbol);
+  };
+
+  const handleSymbolChange = (newSymbol: string) => {
+    setSelectedSymbol(newSymbol);
+    if (selectedTrade && selectedTrade.symbol !== newSymbol) {
+      setSelectedTradeId(undefined);
+    }
+  };
 
   const handleRetry = () => {
     qc.invalidateQueries({ queryKey: ['challenge', modelId] });
@@ -121,8 +158,9 @@ function Dashboard() {
               openTrades={current?.openTrades ?? []}
               pendingTrades={current?.pendingTrades ?? []}
               closedTrades={current?.closedTrades ?? []}
-              selectedId={selectedTrade?.id}
-              onSelect={setSelectedTrade}
+              selectedId={selectedTradeId}
+              onSelect={handleSelectTrade}
+              onInspect={setInspectingTrade}
               accentColor={modelCfg.accentColor}
             />
 
@@ -151,6 +189,9 @@ function Dashboard() {
                 symbol={symbol}
                 timeframe={timeframe}
                 onTimeframeChange={setTimeframe}
+                onSymbolChange={handleSymbolChange}
+                selectedTrade={selectedTrade}
+                onInspectTrade={setInspectingTrade}
                 accentColor={modelCfg.accentColor}
               />
             </div>
@@ -160,8 +201,8 @@ function Dashboard() {
 
       {/* ── Modal & Dev Inspector Overlay ─────────── */}
       <TradeDetailModal
-        trade={selectedTrade ?? null}
-        onClose={() => setSelectedTrade(undefined)}
+        trade={inspectingTrade}
+        onClose={() => setInspectingTrade(null)}
         accentColor={modelCfg.accentColor}
       />
 
