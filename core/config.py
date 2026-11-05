@@ -369,3 +369,30 @@ def run_system_health_check():
     print("=" * 62)
 
     return len(errors) == 0  # True = healthy, False = something needs fixing
+
+
+# ---------------------------------------------------
+# DUAL STRATEGY FLEET CONFIGURATION
+# ---------------------------------------------------
+STRATEGY_INSTANCES = {
+    "cisd": {
+        "name": "CISD + FVG Multi-TF Strategy",
+        "description": "Multi-timeframe Order Blocks, FVG Displacement, SFP & Trend Alignment",
+        "state_file": "exports/challenge_state_cisd.json",
+        "trade_log": "exports/challenge_trades.csv",
+        "start_balance": 5000.0,
+        "target": 5500.0,
+        "floor": 4700.0,
+        "enabled": True,
+    },
+    "liquidity_transfer": {
+        "name": "Liquidity Transfer Strategy",
+        "description": "4H Structural Anchor (SFP/Discount-Premium Tap) -> 15M MSS + Retest",
+        "state_file": "exports/challenge_state_liquidity_transfer.json",
+        "trade_log": "exports/liquidity_transfer_trades.csv",
+        "start_balance": 5000.0,
+        "target": 5500.0,
+        "floor": 4700.0,
+        "enabled": True,
+    },
+}
