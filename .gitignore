@@ -56,8 +56,11 @@ graphify-out/
 # Private Trading Journal & Watchlists
 notes/Journal/
 
-# Node / Frontend UI
+# Node / Frontend UI (Root and nested packages)
 node_modules/
+**/node_modules/
+dist/
+**/dist/
 frontend/node_modules/
 frontend/dist/
 frontend/dist-ssr/
